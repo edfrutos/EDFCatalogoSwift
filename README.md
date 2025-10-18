@@ -1,83 +1,168 @@
 # EDF Catálogo de Tablas - Aplicación nativa para macOS
 
-Esta aplicación nativa para macOS permite gestionar catálogos de tablas con integración a MongoDB Atlas y AWS S3 para el almacenamiento de archivos multimedia.
+Aplicación nativa para macOS que permite gestionar catálogos de tablas con integración a MongoDB Atlas y AWS S3 para el almacenamiento de archivos multimedia.
 
-## Características
+## ✨ Características
 
-- Interfaz nativa para macOS usando SwiftUI
-- Autenticación de usuarios
-- Gestión de catálogos (crear, editar, visualizar)
-- Gestión de filas y columnas en catálogos
-- Soporte para archivos multimedia (imágenes, documentos, videos)
-- Integración con AWS S3 para almacenamiento de archivos
-- Integración con MongoDB Atlas para almacenamiento de datos
+- 🖥️ Interfaz nativa para macOS usando SwiftUI
+- 🔐 Autenticación de usuarios con MongoDB
+- 📊 Gestión completa de catálogos (crear, editar, visualizar, eliminar)
+- 📝 Gestión de filas y columnas en catálogos
+- 📁 Soporte para archivos multimedia (imágenes, documentos, videos)
+- ☁️ Integración con AWS S3 para almacenamiento de archivos
+- 🗄️ Integración con MongoDB Atlas para almacenamiento de datos
+- ✅ **Funciona con doble clic en Finder**
 
-## Requisitos
+## 📋 Requisitos
 
-- macOS 12.0 o superior
-- Xcode 13.0 o superior (para compilar)
-- Swift 5.5 o superior
+- macOS 13.0 o superior
+- Swift 5.9 o superior
+- Xcode 15.0 o superior (para compilar desde código fuente)
 
-## Configuración del proyecto
+## 🚀 Instalación Rápida
+
+### Opción 1: Usar la Aplicación Precompilada
+
+1. Descarga la aplicación desde `bin/EDF Catálogo de Tablas.app`
+2. Haz doble clic para ejecutar
+3. ¡Listo! La aplicación cargará automáticamente las variables de entorno
+
+### Opción 2: Compilar desde Código Fuente
 
 1. Clona el repositorio:
-   ```
-   git clone https://github.com/yourusername/edf_catalogotablas_macOS.git
-   cd edf_catalogotablas_macOS/EDFCatalogoSwift
-   ```
-
-2. Instala las dependencias:
-   ```
-   swift package resolve
+   ```bash
+   git clone https://github.com/edfrutos/EDFCatalogoSwift.git
+   cd EDFCatalogoSwift
    ```
 
-3. Compila el proyecto:
-   ```
-   swift build
+2. Crea tu archivo `.env` basado en `.env.example`:
+   ```bash
+   cp .env.example .env
+   # Edita .env con tus credenciales
    ```
 
-## Compilación y empaquetado
+3. Compila y empaqueta la aplicación:
+   ```bash
+   ./build_app.sh
+   ```
 
-Para crear un archivo `.app` ejecutable desde Finder, utiliza el script de compilación incluido:
+4. La aplicación estará en `bin/EDF Catálogo de Tablas.app`
+
+## ⚙️ Configuración
+
+### Variables de Entorno
+
+Crea un archivo `.env` en la raíz del proyecto con las siguientes variables:
+
+```bash
+# MongoDB
+MONGO_URI=mongodb+srv://usuario:password@cluster.mongodb.net/
+MONGO_DB=nombre_base_datos
+
+# AWS S3
+AWS_ACCESS_KEY_ID=tu_access_key
+AWS_SECRET_ACCESS_KEY=tu_secret_key
+AWS_REGION=eu-central-1
+BUCKET_NAME=tu-bucket
+USE_S3=true
+```
+
+**Nota:** El archivo `.env` se copia automáticamente dentro del bundle de la aplicación durante la compilación, por lo que la aplicación funcionará con doble clic.
+
+## 🔨 Scripts Disponibles
+
+- `./build_app.sh` - Compila y empaqueta la aplicación completa
+- `./run_app.sh` - Ejecuta la aplicación con variables de entorno
+- `swift build` - Compilación en modo debug
+- `swift build -c release` - Compilación en modo release
+
+## 📁 Estructura del Proyecto
 
 ```
-./build-macos.sh
+EDFCatalogoSwift/
+├── Sources/
+│   ├── EDFCatalogoSwift/        # Punto de entrada (@main)
+│   └── EDFCatalogoLib/          # Biblioteca principal
+│       ├── Models/              # Modelos de datos
+│       ├── Views/               # Vistas SwiftUI
+│       ├── ViewModels/          # ViewModels
+│       ├── Services/            # Servicios (MongoDB, S3, Keychain)
+│       └── Extensions/          # Extensiones
+├── Resources/                   # Recursos (imágenes, iconos)
+├── bin/                        # Aplicación compilada
+├── Package.swift               # Configuración de Swift Package Manager
+├── build_app.sh               # Script de compilación
+└── .env                       # Variables de entorno (no versionado)
 ```
 
-Este script realizará las siguientes acciones:
-- Compilar el proyecto en modo release
-- Crear la estructura de directorios para la aplicación macOS
-- Copiar el ejecutable y los recursos necesarios
-- Crear el icono de la aplicación a partir del logo
-- Firmar la aplicación (firma ad-hoc)
-- Quitar atributos de cuarentena
+## 🎯 Credenciales de Prueba
 
-La aplicación compilada estará disponible en `bin/EDF Catálogo de Tablas.app`.
+Para probar la aplicación, puedes utilizar:
 
-## Credenciales de prueba
+- **Email**: admin@edf.com
+- **Contraseña**: admin123
 
-Para probar la aplicación, puedes utilizar las siguientes credenciales:
+## 🔧 Solución de Problemas
 
-- **Email**: test@example.com
-- **Contraseña**: password
+### La aplicación no se abre con doble clic
 
-## Estructura del proyecto
+1. Verifica que el archivo `.env` esté en la raíz del proyecto
+2. Recompila la aplicación con `./build_app.sh`
+3. El script copiará automáticamente el `.env` dentro del bundle
 
-- `Sources/App`: Punto de entrada de la aplicación
-- `Sources/Models`: Modelos de datos
-- `Sources/Views`: Vistas de la interfaz de usuario
-- `Sources/Services`: Servicios para MongoDB, S3 y Keychain
-- `Sources/Utilities`: Utilidades y helpers
-- `Resources`: Recursos como imágenes y archivos de configuración
+### Error de conexión a MongoDB
 
-## Configuración de MongoDB Atlas
+1. Verifica que `MONGO_URI` esté correctamente configurado en `.env`
+2. Asegúrate de que tu IP esté en la lista blanca de MongoDB Atlas
+3. Revisa los logs en Console.app filtrando por "EDFCatalogoSwift"
 
-La aplicación está configurada para conectarse a MongoDB Atlas. Los parámetros de conexión están definidos en `Sources/Services/MongoService.swift`.
+### Error con AWS S3
 
-## Configuración de AWS S3
+1. Verifica que las credenciales AWS estén correctas en `.env`
+2. Asegúrate de que el bucket existe y tienes permisos
+3. Verifica que la región sea correcta
 
-La aplicación está configurada para utilizar AWS S3 para el almacenamiento de archivos. Los parámetros de conexión están definidos en `Sources/Services/S3Service.swift`.
+## 📚 Documentación Adicional
 
-## Licencia
+- [SOLUCION_COMPILACION.md](SOLUCION_COMPILACION.md) - Documentación técnica completa
+- [MANUAL_DE_USUARIO.md](MANUAL_DE_USUARIO.md) - Manual de usuario
+- [RESUMEN_MEJORAS.md](RESUMEN_MEJORAS.md) - Resumen de mejoras implementadas
+
+## 🐛 Problemas Resueltos
+
+- ✅ Error de compilación con atributo `@main`
+- ✅ Bucle infinito de recursión en layout
+- ✅ Variables de entorno no cargadas al hacer doble clic
+- ✅ Compatibilidad con diferentes nombres de variables (`MONGO_URI` vs `MONGODB_URI`)
+- ✅ Crash al intentar hacer login
+- ✅ NavigationLink deprecado
+
+## 🤝 Contribuir
+
+Las contribuciones son bienvenidas. Por favor:
+
+1. Fork el proyecto
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+
+## 📄 Licencia
 
 Este proyecto está licenciado bajo la licencia MIT. Consulta el archivo LICENSE para más detalles.
+
+## 👤 Autor
+
+**Eduardo de Frutos**
+- GitHub: [@edfrutos](https://github.com/edfrutos)
+
+## 🙏 Agradecimientos
+
+- MongoDB Atlas por la base de datos en la nube
+- AWS S3 por el almacenamiento de archivos
+- SwiftUI por el framework de UI moderno
+
+---
+
+**Versión:** 1.0.0  
+**Última actualización:** 18 de Octubre de 2025
