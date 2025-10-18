@@ -13,5 +13,9 @@ public struct ContentView: View {
                 LoginView()
             }
         }
+        .task {
+            // Intentar restaurar la sesión al iniciar la app
+            await authViewModel.restoreSession()
+        }
     }
 }
