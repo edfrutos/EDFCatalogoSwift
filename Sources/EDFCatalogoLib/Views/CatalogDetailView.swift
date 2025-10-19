@@ -15,10 +15,138 @@ public class CatalogDetailViewModel: ObservableObject {
     @Published var showingAddRowSheet: Bool = false
 
     private let mongoService = MongoService.shared
+    private let catalogId: BSONObjectID
 
     public init(catalog: Catalog) {
         self.catalog = catalog
+        self.catalogId = catalog._id
         loadRows()
+    }
+    
+    /// Recarga el catálogo completo desde MongoDB
+    public func reloadCatalog() {
+        isLoading = true
+        errorMessage = nil
+        
+        Task {
+            do {
+                // Obtener el catálogo actualizado desde MongoDB
+                let catalogs = try await mongoService.catalogsCollection()
+                let filter: BSONDocument = ["_id": .objectID(catalogId)]
+                
+                if let doc = try await catalogs.findOne(filter),
+                   let updatedCatalog = try? parseCatalogFromDocument(doc) {
+                    await MainActor.run {
+                        self.catalog = updatedCatalog
+                        self.rows = updatedCatalog.rows
+                        self.isLoading = false
+                    }
+                } else {
+                    await MainActor.run {
+                        self.errorMessage = "No se pudo recargar el catálogo"
+                        self.isLoading = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
+    }
+    
+    /// Parsea un documento de MongoDB a un objeto Catalog
+    private func parseCatalogFromDocument(_ doc: BSONDocument) throws -> Catalog {
+        guard let catalogId = doc["_id"]?.objectIDValue else {
+            throw NSError(domain: "CatalogDetailViewModel", code: 1, userInfo: [NSLocalizedDescriptionKey: "ID de catálogo inválido"])
+        }
+        
+        let name = doc["Name"]?.stringValue ?? "Sin nombre"
+        let description = doc["Description"]?.stringValue ?? ""
+        let owner = doc["Owner"]?.stringValue ?? doc["CreatedBy"]?.stringValue ?? ""
+        
+        var columns: [String] = []
+        if let headersArray = doc["Headers"]?.arrayValue {
+            columns = headersArray.compactMap { $0.stringValue }
+        }
+        
+        var rows: [CatalogRow] = []
+        if let rowsArray = doc["Rows"]?.arrayValue {
+            for rowBSON in rowsArray {
+                if let rowDoc = rowBSON.documentValue,
+                   let row = try? parseRowFromDocument(rowDoc) {
+                    rows.append(row)
+                }
+            }
+        }
+        
+        let createdAt = doc["CreatedAt"]?.dateValue ?? Date()
+        let updatedAt = doc["UpdatedAt"]?.dateValue ?? Date()
+        
+        return Catalog(
+            _id: catalogId,
+            name: name,
+            description: description,
+            userId: owner,
+            columns: columns,
+            rows: rows,
+            legacyRows: nil,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
+    }
+    
+    /// Parsea una fila desde un documento de MongoDB
+    private func parseRowFromDocument(_ doc: BSONDocument) throws -> CatalogRow {
+        let originalIdString: String?
+        if let idStr = doc["_id"]?.stringValue {
+            originalIdString = idStr
+        } else if let objId = doc["_id"]?.objectIDValue {
+            originalIdString = objId.hex
+        } else {
+            originalIdString = nil
+        }
+        
+        let rowId = BSONObjectID()
+        
+        var data: [String: String] = [:]
+        if let dataDoc = doc["Data"]?.documentValue {
+            for (key, value) in dataDoc {
+                if let stringValue = value.stringValue {
+                    data[key] = stringValue
+                }
+            }
+        }
+        
+        var files = RowFiles()
+        if let filesDoc = doc["Files"]?.documentValue {
+            files.image = filesDoc["Image"]?.stringValue
+            files.document = filesDoc["Document"]?.stringValue
+            files.multimedia = filesDoc["Multimedia"]?.stringValue
+            
+            if let imagesArray = filesDoc["Images"]?.arrayValue {
+                files.images = imagesArray.compactMap { $0.stringValue }
+            }
+            if let docsArray = filesDoc["Documents"]?.arrayValue {
+                files.documents = docsArray.compactMap { $0.stringValue }
+            }
+            if let multimediaArray = filesDoc["MultimediaFiles"]?.arrayValue {
+                files.multimediaFiles = multimediaArray.compactMap { $0.stringValue }
+            }
+        }
+        
+        let createdAt = doc["CreatedAt"]?.dateValue ?? Date()
+        let updatedAt = doc["UpdatedAt"]?.dateValue ?? Date()
+        
+        return CatalogRow(
+            _id: rowId,
+            originalId: originalIdString,
+            data: data,
+            files: files,
+            createdAt: createdAt,
+            updatedAt: updatedAt
+        )
     }
 
     public func loadRows() {
@@ -87,8 +215,11 @@ public class CatalogDetailViewModel: ObservableObject {
 
     public func addRow(data: [String: String], files: RowFiles) {
         let now = Date()
+        // Generar un UUID nuevo para la fila (formato MongoDB)
+        let newUUID = UUID().uuidString.lowercased()
         let newRow = CatalogRow(
             _id: BSONObjectID(),
+            originalId: newUUID,
             data: data,
             files: files,
             createdAt: now,
@@ -106,6 +237,8 @@ public class CatalogDetailViewModel: ObservableObject {
         updatedRow.data = data
         updatedRow.files = files
         updatedRow.updatedAt = Date()
+        // Preservar el originalId
+        // (ya está en updatedRow, no hace falta reasignarlo)
 
         rows[index] = updatedRow
         persistCatalogChanges()
@@ -116,8 +249,13 @@ public class CatalogDetailViewModel: ObservableObject {
         rows.remove(at: index)
         persistCatalogChanges()
     }
+    
+    public func moveRow(from source: IndexSet, to destination: Int) {
+        rows.move(fromOffsets: source, toOffset: destination)
+        persistCatalogChanges()
+    }
 
-    private func persistCatalogChanges() {
+    public func persistCatalogChanges() {
         var updatedCatalog = catalog
         updatedCatalog.rows = rows
         updatedCatalog.updatedAt = Date()
@@ -138,7 +276,6 @@ public class CatalogDetailViewModel: ObservableObject {
 // MARK: - Vista principal
 
 public struct CatalogDetailView: View {
-    @Environment(\.presentationMode) var presentationMode
     @StateObject private var viewModel: CatalogDetailViewModel
     @State private var selectedRowIndex: Int?
     @State private var showingFileViewer = false
@@ -153,16 +290,16 @@ public struct CatalogDetailView: View {
         VStack {
             // Header
             HStack {
-                Button(action: { presentationMode.wrappedValue.dismiss() }) {
-                    Image(systemName: "chevron.left").imageScale(.large)
-                }
-
                 Text(viewModel.catalog.name)
                     .font(.largeTitle).fontWeight(.bold)
 
                 Spacer()
 
                 Button(viewModel.isEditing ? "Terminar edición" : "Editar") {
+                    if viewModel.isEditing {
+                        // Al salir del modo edición, guardar cambios
+                        viewModel.persistCatalogChanges()
+                    }
                     viewModel.isEditing.toggle()
                 }
                 .buttonStyle(.borderedProminent)
@@ -232,8 +369,9 @@ public struct CatalogDetailView: View {
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
+                if viewModel.isEditing {
+                    // Modo edición: Lista con reordenamiento
+                    List {
                         ForEach(viewModel.rows.indices, id: \.self) { index in
                             CatalogRowView(
                                 row: viewModel.rows[index],
@@ -247,14 +385,41 @@ public struct CatalogDetailView: View {
                                     showingFileViewer = true
                                 }
                             )
-                            .padding(.horizontal, 16)
-                            .background(index % 2 == 0 ? Color.blue.opacity(0.05) : Color.clear)
-                            .cornerRadius(8)
+                            .listRowBackground(index % 2 == 0 ? Color.blue.opacity(0.05) : Color.clear)
                         }
+                        .onMove(perform: viewModel.moveRow)
                     }
-                    .padding(.vertical, 8)
+                    .listStyle(.plain)
+                } else {
+                    // Modo visualización: ScrollView normal
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(viewModel.rows.indices, id: \.self) { index in
+                                CatalogRowView(
+                                    row: viewModel.rows[index],
+                                    columns: viewModel.catalog.columns,
+                                    isEditing: viewModel.isEditing,
+                                    onEdit: { viewModel.updateRow(at: index, data: $0, files: $1) },
+                                    onDelete: { viewModel.deleteRow(at: index) },
+                                    onFileSelected: { url, name in
+                                        selectedFileUrl = url
+                                        selectedFileName = name
+                                        showingFileViewer = true
+                                    }
+                                )
+                                .padding(.horizontal, 16)
+                                .background(index % 2 == 0 ? Color.blue.opacity(0.05) : Color.clear)
+                                .cornerRadius(8)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
                 }
             }
+        }
+        .onAppear {
+            // Recargar datos desde MongoDB al aparecer la vista
+            viewModel.reloadCatalog()
         }
         .sheet(isPresented: $viewModel.showingAddRowSheet) {
             AddRowView(columns: viewModel.catalog.columns) { data, files in
@@ -270,6 +435,12 @@ public struct CatalogDetailView: View {
     }
 }
 
+// MARK: - Wrapper para datos de edición
+struct EditableRowData: Identifiable {
+    let id = UUID()
+    let data: [String: String]
+}
+
 // MARK: - Fila
 
 struct CatalogRowView: View {
@@ -280,8 +451,7 @@ struct CatalogRowView: View {
     let onDelete: () -> Void
     let onFileSelected: (String, String) -> Void
 
-    @State private var editedData: [String: String] = [:]
-    @State private var showingEditSheet = false
+    @State private var dataToEdit: EditableRowData?
     @State private var isExpanded = false
 
     var body: some View {
@@ -320,8 +490,16 @@ struct CatalogRowView: View {
                 if isEditing {
                     HStack(spacing: 8) {
                         Button(action: {
-                            editedData = row.data
-                            showingEditSheet = true
+                            // Inicializar dataToEdit con TODAS las columnas
+                            var fullData: [String: String] = [:]
+                            for column in columns {
+                                fullData[column] = row.data[column] ?? ""
+                            }
+                            print("🔍 DEBUG - Datos antes de editar:")
+                            print("  Columnas: \(columns)")
+                            print("  row.data: \(row.data)")
+                            print("  fullData: \(fullData)")
+                            dataToEdit = EditableRowData(data: fullData)
                         }) {
                             Image(systemName: "pencil").foregroundColor(.blue)
                         }
@@ -395,13 +573,14 @@ struct CatalogRowView: View {
                 .padding()
             }
         }
-        .sheet(isPresented: $showingEditSheet) {
+        .sheet(item: $dataToEdit) { editableData in
             EditRowView(
-                data: editedData,
+                data: editableData.data,
                 files: row.files,
                 columns: columns
             ) { updatedData, updatedFiles in
                 onEdit(updatedData, updatedFiles)
+                dataToEdit = nil
             }
         }
     }
@@ -478,6 +657,7 @@ struct AddRowView: View {
     @State private var imageUrl: String = ""
     @State private var documentUrl: String = ""
     @State private var multimediaUrl: String = ""
+    @State private var showValidationError = false
 
     init(columns: [String], onSave: @escaping ([String: String], RowFiles) -> Void) {
         self.columns = columns
@@ -486,6 +666,11 @@ struct AddRowView: View {
         var initialData: [String: String] = [:]
         for column in columns { initialData[column] = "" }
         _data = State(initialValue: initialData)
+    }
+    
+    private var hasRequiredData: Bool {
+        // Al menos un campo debe tener datos
+        return data.values.contains(where: { !$0.isEmpty })
     }
 
     var body: some View {
@@ -508,10 +693,18 @@ struct AddRowView: View {
                     }
                 }
 
-                Section(header: Text("Archivos")) {
+                Section(header: Text("Archivos (opcional)")) {
                     TextField("URL de imagen", text: $imageUrl)
                     TextField("URL de documento", text: $documentUrl)
                     TextField("URL de multimedia", text: $multimediaUrl)
+                }
+                
+                if showValidationError {
+                    Section {
+                        Text("⚠️ Debes completar al menos un campo de datos")
+                            .foregroundColor(.red)
+                            .font(.caption)
+                    }
                 }
             }
             .padding()
@@ -519,16 +712,20 @@ struct AddRowView: View {
             HStack {
                 Spacer()
                 Button("Guardar") {
-                    let files = RowFiles(
-                        image: imageUrl.isEmpty ? nil : imageUrl,
-                        images: [],
-                        document: documentUrl.isEmpty ? nil : documentUrl,
-                        documents: [],
-                        multimedia: multimediaUrl.isEmpty ? nil : multimediaUrl,
-                        multimediaFiles: []
-                    )
-                    onSave(data, files)
-                    presentationMode.wrappedValue.dismiss()
+                    if hasRequiredData {
+                        let files = RowFiles(
+                            image: imageUrl.isEmpty ? nil : imageUrl,
+                            images: [],
+                            document: documentUrl.isEmpty ? nil : documentUrl,
+                            documents: [],
+                            multimedia: multimediaUrl.isEmpty ? nil : multimediaUrl,
+                            multimediaFiles: []
+                        )
+                        onSave(data, files)
+                        presentationMode.wrappedValue.dismiss()
+                    } else {
+                        showValidationError = true
+                    }
                 }
                 .buttonStyle(.borderedProminent)
             }
@@ -549,6 +746,13 @@ struct EditRowView: View {
     let onSave: ([String: String], RowFiles) -> Void
 
     init(data: [String: String], files: RowFiles, columns: [String], onSave: @escaping ([String: String], RowFiles) -> Void) {
+        print("🔍 DEBUG - EditRowView init:")
+        print("  data recibido: \(data)")
+        print("  columns: \(columns)")
+        print("  files.image: \(files.image ?? "nil")")
+        print("  files.document: \(files.document ?? "nil")")
+        print("  files.multimedia: \(files.multimedia ?? "nil")")
+        
         _data = State(initialValue: data)
         _imageUrl = State(initialValue: files.image ?? "")
         _documentUrl = State(initialValue: files.document ?? "")

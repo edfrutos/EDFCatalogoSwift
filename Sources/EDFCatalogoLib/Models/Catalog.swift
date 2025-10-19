@@ -39,8 +39,9 @@ public struct Catalog: Identifiable, Codable, @unchecked Sendable {
 }
 
 public struct CatalogRow: Identifiable, Codable, @unchecked Sendable {
-    public var id: String { _id.hex }
+    public var id: String { originalId ?? _id.hex }
     public var _id: BSONObjectID
+    public var originalId: String? // UUID string original de MongoDB
     public var data: [String:String]
     public var files: RowFiles
     public var createdAt: Date
@@ -48,12 +49,14 @@ public struct CatalogRow: Identifiable, Codable, @unchecked Sendable {
 
     public init(
         _id: BSONObjectID = BSONObjectID(),
+        originalId: String? = nil,
         data: [String:String],
         files: RowFiles = RowFiles(),
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
         self._id = _id
+        self.originalId = originalId
         self.data = data
         self.files = files
         self.createdAt = createdAt

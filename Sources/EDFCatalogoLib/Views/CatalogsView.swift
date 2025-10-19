@@ -98,11 +98,25 @@ public struct CatalogsView: View {
     @State private var catalogToEdit: CatalogEditData?
     @State private var catalogToDelete: Int?
     @State private var showingDeleteAlert = false
+    @State private var searchText = ""
     
     public init() {}
+    
+    // Catálogos filtrados por búsqueda
+    private var filteredCatalogs: [Catalog] {
+        if searchText.isEmpty {
+            return viewModel.catalogs
+        } else {
+            return viewModel.catalogs.filter { catalog in
+                catalog.name.localizedCaseInsensitiveContains(searchText) ||
+                catalog.description.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
 
     public var body: some View {
-        VStack {
+        NavigationStack {
+            VStack {
             HStack {
                 Text("Catálogos").font(.largeTitle).bold()
                 Spacer()
@@ -113,6 +127,25 @@ public struct CatalogsView: View {
                 }
                 .disabled(authViewModel.currentUser == nil)
             }
+            .padding(.horizontal)
+            
+            // Campo de búsqueda
+            HStack {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(.secondary)
+                TextField("Buscar catálogos...", text: $searchText)
+                    .textFieldStyle(.plain)
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(8)
+            .background(Color(.controlBackgroundColor))
+            .cornerRadius(8)
             .padding(.horizontal)
 
             if viewModel.isLoading {
@@ -126,47 +159,63 @@ public struct CatalogsView: View {
                         }
                     }
                 }.padding()
+            } else if filteredCatalogs.isEmpty {
+                VStack(spacing: 16) {
+                    Image(systemName: searchText.isEmpty ? "folder" : "magnifyingglass")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
+                    Text(searchText.isEmpty ? "No hay catálogos" : "No se encontraron catálogos")
+                        .font(.headline)
+                    if !searchText.isEmpty {
+                        Text("Intenta con otros términos de búsqueda")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
-                    ForEach(viewModel.catalogs.indices, id: \.self) { index in
-                        HStack {
-                            NavigationLink(destination: CatalogDetailView(catalog: viewModel.catalogs[index])) {
-                                VStack(alignment: .leading) {
-                                    Text(viewModel.catalogs[index].name).font(.headline)
-                                    Text(viewModel.catalogs[index].description).font(.subheadline).foregroundColor(.secondary)
+                    ForEach(filteredCatalogs.indices, id: \.self) { filteredIndex in
+                        let catalog = filteredCatalogs[filteredIndex]
+                        // Encontrar el índice real en el array original
+                        if let originalIndex = viewModel.catalogs.firstIndex(where: { $0.id == catalog.id }) {
+                            HStack {
+                                NavigationLink(destination: CatalogDetailView(catalog: catalog)) {
+                                    VStack(alignment: .leading) {
+                                        Text(catalog.name).font(.headline)
+                                        Text(catalog.description).font(.subheadline).foregroundColor(.secondary)
+                                    }
                                 }
-                            }
-                            
-                            Spacer()
-                            
-                            // Botones de acción
-                            HStack(spacing: 8) {
-                                Button(action: {
-                                    print("🔵 Botón editar presionado para índice: \(index)")
-                                    catalogToEdit = CatalogEditData(
-                                        index: index,
-                                        catalog: viewModel.catalogs[index]
-                                    )
-                                    print("🔵 catalogToEdit establecido: \(catalogToEdit != nil)")
-                                }) {
-                                    Image(systemName: "pencil")
-                                        .foregroundColor(.blue)
-                                }
-                                .buttonStyle(.plain)
                                 
-                                Button(action: {
-                                    print("🔴 Botón eliminar presionado para índice: \(index)")
-                                    catalogToDelete = index
-                                    showingDeleteAlert = true
-                                }) {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(.red)
+                                Spacer()
+                                
+                                // Botones de acción
+                                HStack(spacing: 8) {
+                                    Button(action: {
+                                        catalogToEdit = CatalogEditData(
+                                            index: originalIndex,
+                                            catalog: catalog
+                                        )
+                                    }) {
+                                        Image(systemName: "pencil")
+                                            .foregroundColor(.blue)
+                                    }
+                                    .buttonStyle(.plain)
+                                    
+                                    Button(action: {
+                                        catalogToDelete = originalIndex
+                                        showingDeleteAlert = true
+                                    }) {
+                                        Image(systemName: "trash")
+                                            .foregroundColor(.red)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
                     }
                 }
+            }
             }
         }
         .onAppear {

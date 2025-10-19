@@ -91,18 +91,25 @@ extension MongoService {
     /// Actualiza un catálogo existente en MongoDB
     public func updateCatalog(_ catalog: Catalog) async throws {
         print("📝 Actualizando catálogo: \(catalog.name)")
+        print("📊 Número de filas a guardar: \(catalog.rows.count)")
         
         let catalogs = try await catalogsCollection()
         
-        // Crear documento actualizado
+        // Convertir filas a BSON
+        let rowsBSON: [BSON] = catalog.rows.map { row in
+            .document(makeBSONForRow(from: row))
+        }
+        
+        // Crear documento actualizado con TODAS las filas
         let doc: BSONDocument = [
             "Name": .string(catalog.name),
             "Description": .string(catalog.description),
             "Headers": .array(catalog.columns.map { .string($0) }),
+            "Rows": .array(rowsBSON),
             "UpdatedAt": .datetime(Date())
         ]
         
-        print("📄 Documento a actualizar: \(doc)")
+        print("📄 Documento a actualizar con \(rowsBSON.count) filas")
         
         let filter: BSONDocument = ["_id": .objectID(catalog._id)]
         let update: BSONDocument = ["$set": .document(doc)]
@@ -143,12 +150,12 @@ extension MongoService {
             columns = headersArray.compactMap { $0.stringValue }
         }
         
-        // Parsear Rows
+        // Parsear Rows - pasar las columnas para inicializar todos los campos
         var rows: [CatalogRow] = []
         if let rowsArray = doc["Rows"]?.arrayValue {
             for rowBSON in rowsArray {
                 if let rowDoc = rowBSON.documentValue,
-                   let row = try? parseRowFromDocument(rowDoc) {
+                   let row = try? parseRowFromDocument(rowDoc, columns: columns) {
                     rows.append(row)
                 }
             }
@@ -171,13 +178,27 @@ extension MongoService {
     }
     
     /// Parsea una fila desde un documento de MongoDB
-    private func parseRowFromDocument(_ doc: BSONDocument) throws -> CatalogRow {
-        guard let rowId = (try? doc["_id"]?.stringValue.flatMap({ try BSONObjectID($0) })) ?? doc["_id"]?.objectIDValue else {
-            throw NSError(domain: "MongoService", code: 2, userInfo: [NSLocalizedDescriptionKey: "ID de fila inválido"])
+    private func parseRowFromDocument(_ doc: BSONDocument, columns: [String]) throws -> CatalogRow {
+        // MongoDB usa UUIDs como strings para los _id de las filas
+        let originalIdString: String?
+        if let idStr = doc["_id"]?.stringValue {
+            originalIdString = idStr
+        } else if let objId = doc["_id"]?.objectIDValue {
+            originalIdString = objId.hex
+        } else {
+            originalIdString = nil
         }
         
-        // Parsear Data
+        // Crear un BSONObjectID temporal para uso interno
+        let rowId = BSONObjectID()
+        
+        // Inicializar data con TODAS las columnas (vacías por defecto)
         var data: [String: String] = [:]
+        for column in columns {
+            data[column] = ""
+        }
+        
+        // Sobrescribir con los valores que existen en MongoDB
         if let dataDoc = doc["Data"]?.documentValue {
             for (key, value) in dataDoc {
                 if let stringValue = value.stringValue {
@@ -209,6 +230,7 @@ extension MongoService {
         
         return CatalogRow(
             _id: rowId,
+            originalId: originalIdString,
             data: data,
             files: files,
             createdAt: createdAt,
@@ -218,27 +240,33 @@ extension MongoService {
     
     // MARK: - Helper para convertir filas a BSON
     
-    /// Transforma una fila en BSONDocument para MongoDB
-    func makeBSON(from row: CatalogRow) -> BSONDocument {
+    /// Transforma una fila en BSONDocument para MongoDB (con mayúsculas según estructura de MongoDB)
+    private func makeBSONForRow(from row: CatalogRow) -> BSONDocument {
         var dataDoc = BSONDocument()
         for (k, v) in row.data {
             dataDoc[k] = .string(v)
         }
 
         var filesDoc = BSONDocument()
-        filesDoc["image"] = row.files.image.map { .string($0) } ?? .null
-        filesDoc["images"] = .array(row.files.images.map { .string($0) })
-        filesDoc["document"] = row.files.document.map { .string($0) } ?? .null
-        filesDoc["documents"] = .array(row.files.documents.map { .string($0) })
-        filesDoc["multimedia"] = row.files.multimedia.map { .string($0) } ?? .null
-        filesDoc["multimediaFiles"] = .array(row.files.multimediaFiles.map { .string($0) })
+        filesDoc["Image"] = row.files.image.map { .string($0) } ?? .null
+        filesDoc["Images"] = .array(row.files.images.map { .string($0) })
+        filesDoc["Document"] = row.files.document.map { .string($0) } ?? .null
+        filesDoc["Documents"] = .array(row.files.documents.map { .string($0) })
+        filesDoc["Multimedia"] = row.files.multimedia.map { .string($0) } ?? .null
+        filesDoc["MultimediaFiles"] = .array(row.files.multimediaFiles.map { .string($0) })
+        filesDoc["AdditionalFiles"] = .array([])
 
         var doc = BSONDocument()
-        doc["_id"] = .objectID(row._id)
-        doc["data"] = .document(dataDoc)
-        doc["files"] = .document(filesDoc)
-        doc["createdAt"] = .datetime(row.createdAt)
-        doc["updatedAt"] = .datetime(row.updatedAt)
+        // Usar el originalId si existe (UUID de MongoDB), si no, generar uno nuevo
+        if let originalId = row.originalId {
+            doc["_id"] = .string(originalId)
+        } else {
+            doc["_id"] = .string(UUID().uuidString.lowercased())
+        }
+        doc["Data"] = .document(dataDoc)
+        doc["Files"] = .document(filesDoc)
+        doc["CreatedAt"] = .datetime(row.createdAt)
+        doc["UpdatedAt"] = .datetime(row.updatedAt)
         return doc
     }
 }

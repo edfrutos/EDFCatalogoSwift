@@ -14,6 +14,7 @@ let package = Package(
         .package(url: "https://github.com/mongodb/mongo-swift-driver.git", from: "1.3.0"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+        .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "0.38.0"),
     ],
     targets: [
         // Target de librería con todo el código de la aplicación
@@ -22,6 +23,7 @@ let package = Package(
             dependencies: [
                 .product(name: "MongoSwift", package: "mongo-swift-driver"),
                 .product(name: "NIO", package: "swift-nio"),
+                .product(name: "AWSS3", package: "aws-sdk-swift"),
             ],
             path: "Sources/EDFCatalogoLib",
             swiftSettings: [
