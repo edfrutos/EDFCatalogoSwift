@@ -1,6 +1,8 @@
 import SwiftUI
+import Foundation
 import PDFKit
 import AVKit
+import AVFoundation
 import UniformTypeIdentifiers
 @preconcurrency import SwiftBSON
 
@@ -278,10 +280,9 @@ public class CatalogDetailViewModel: ObservableObject {
 
 public struct CatalogDetailView: View {
     @StateObject private var viewModel: CatalogDetailViewModel
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var selectedRowIndex: Int?
-    @State private var showingFileViewer = false
-    @State private var selectedFileUrl: String = ""
-    @State private var selectedFileName: String = ""
+    @State private var selectedFile: SelectedFile?
 
     public init(catalog: Catalog) {
         _viewModel = StateObject(wrappedValue: CatalogDetailViewModel(catalog: catalog))
@@ -377,13 +378,16 @@ public struct CatalogDetailView: View {
                             CatalogRowView(
                                 row: viewModel.rows[index],
                                 columns: viewModel.catalog.columns,
+                                catalogId: viewModel.catalog.id,
                                 isEditing: viewModel.isEditing,
                                 onEdit: { viewModel.updateRow(at: index, data: $0, files: $1) },
                                 onDelete: { viewModel.deleteRow(at: index) },
                                 onFileSelected: { url, name in
-                                    selectedFileUrl = url
-                                    selectedFileName = name
-                                    showingFileViewer = true
+                                    print("👁 DEBUG - onFileSelected callback llamado (modo edición):")
+                                    print("  URL recibida: \(url)")
+                                    print("  Nombre recibido: \(name)")
+                                    selectedFile = SelectedFile(url: url, fileName: name)
+                                    print("  selectedFile creado: url=\(url), name=\(name)")
                                 }
                             )
                             .listRowBackground(index % 2 == 0 ? Color.blue.opacity(0.05) : Color.clear)
@@ -399,13 +403,16 @@ public struct CatalogDetailView: View {
                                 CatalogRowView(
                                     row: viewModel.rows[index],
                                     columns: viewModel.catalog.columns,
+                                    catalogId: viewModel.catalog.id,
                                     isEditing: viewModel.isEditing,
                                     onEdit: { viewModel.updateRow(at: index, data: $0, files: $1) },
                                     onDelete: { viewModel.deleteRow(at: index) },
                                     onFileSelected: { url, name in
-                                        selectedFileUrl = url
-                                        selectedFileName = name
-                                        showingFileViewer = true
+                                        print("👁 DEBUG - onFileSelected callback llamado (modo visualización):")
+                                        print("  URL recibida: \(url)")
+                                        print("  Nombre recibido: \(name)")
+                                        selectedFile = SelectedFile(url: url, fileName: name)
+                                        print("  selectedFile creado: url=\(url), name=\(name)")
                                     }
                                 )
                                 .padding(.horizontal, 16)
@@ -423,14 +430,19 @@ public struct CatalogDetailView: View {
             viewModel.reloadCatalog()
         }
         .sheet(isPresented: $viewModel.showingAddRowSheet) {
-            AddRowView(columns: viewModel.catalog.columns) { data, files in
-                viewModel.addRow(data: data, files: files)
-            }
+            AddRowView(
+                columns: viewModel.catalog.columns,
+                catalogId: viewModel.catalog.id,
+                onSave: { data, files in
+                    viewModel.addRow(data: data, files: files)
+                }
+            )
+            .environmentObject(authViewModel)
         }
-        .sheet(isPresented: $showingFileViewer) {
+        .sheet(item: $selectedFile) { file in
             FileViewerView(
-                url: selectedFileUrl.isEmpty ? "URL no disponible" : selectedFileUrl,
-                fileName: selectedFileName.isEmpty ? "Archivo no disponible" : selectedFileName
+                url: file.url,
+                fileName: file.fileName
             )
         }
     }
@@ -442,16 +454,25 @@ struct EditableRowData: Identifiable {
     let data: [String: String]
 }
 
+// MARK: - Wrapper para archivo seleccionado
+struct SelectedFile: Identifiable {
+    let id = UUID()
+    let url: String
+    let fileName: String
+}
+
 // MARK: - Fila
 
 struct CatalogRowView: View {
     let row: CatalogRow
     let columns: [String]
+    let catalogId: String
     let isEditing: Bool
     let onEdit: ([String: String], RowFiles) -> Void
     let onDelete: () -> Void
     let onFileSelected: (String, String) -> Void
-
+    
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var dataToEdit: EditableRowData?
     @State private var isExpanded = false
 
@@ -544,19 +565,31 @@ struct CatalogRowView: View {
 
                             if let image = row.files.image {
                                 FileItemView(url: image, type: "Imagen principal") {
-                                    onFileSelected(image, "Imagen principal")
+                                    let fileName = URL(string: image)?.lastPathComponent ?? "Imagen principal"
+                                    print("📝 DEBUG - Imagen seleccionada:")
+                                    print("  URL: \(image)")
+                                    print("  Nombre: \(fileName)")
+                                    onFileSelected(image, fileName)
                                 }
                             }
 
                             if let document = row.files.document {
                                 FileItemView(url: document, type: "Documento principal") {
-                                    onFileSelected(document, "Documento principal")
+                                    let fileName = URL(string: document)?.lastPathComponent ?? "Documento principal"
+                                    print("📝 DEBUG - Documento seleccionado:")
+                                    print("  URL: \(document)")
+                                    print("  Nombre: \(fileName)")
+                                    onFileSelected(document, fileName)
                                 }
                             }
 
                             if let multimedia = row.files.multimedia {
                                 FileItemView(url: multimedia, type: "Multimedia principal") {
-                                    onFileSelected(multimedia, "Multimedia principal")
+                                    let fileName = URL(string: multimedia)?.lastPathComponent ?? "Multimedia principal"
+                                    print("📝 DEBUG - Multimedia seleccionado:")
+                                    print("  URL: \(multimedia)")
+                                    print("  Nombre: \(fileName)")
+                                    onFileSelected(multimedia, fileName)
                                 }
                             }
                         }
@@ -578,11 +611,13 @@ struct CatalogRowView: View {
             EditRowView(
                 data: editableData.data,
                 files: row.files,
-                columns: columns
+                columns: columns,
+                catalogId: catalogId
             ) { updatedData, updatedFiles in
                 onEdit(updatedData, updatedFiles)
                 dataToEdit = nil
             }
+            .environmentObject(authViewModel)
         }
     }
 
@@ -654,6 +689,7 @@ struct AddRowView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     
     let columns: [String]
+    let catalogId: String
     let onSave: ([String: String], RowFiles) -> Void
 
     @State private var data: [String: String] = [:]
@@ -673,8 +709,9 @@ struct AddRowView: View {
     @State private var isUploadingMultimedia = false
     @State private var uploadError: String?
 
-    init(columns: [String], onSave: @escaping ([String: String], RowFiles) -> Void) {
+    init(columns: [String], catalogId: String, onSave: @escaping ([String: String], RowFiles) -> Void) {
         self.columns = columns
+        self.catalogId = catalogId
         self.onSave = onSave
 
         var initialData: [String: String] = [:]
@@ -709,13 +746,48 @@ struct AddRowView: View {
                             get: { data[column] ?? "" },
                             set: { data[column] = $0 }
                         ))
+                        .disabled(isUploading)
                     }
                 }
 
                 Section(header: Text("Archivos (opcional)")) {
-                    TextField("URL de imagen", text: $imageUrl)
-                    TextField("URL de documento", text: $documentUrl)
-                    TextField("URL de multimedia", text: $multimediaUrl)
+                    // Imagen
+                    FileSelectionRow(
+                        title: "Imagen principal",
+                        selectedFile: $selectedImageFile,
+                        existingUrl: $imageUrl,
+                        isUploading: isUploadingImage,
+                        fileType: .image,
+                        onSelect: { selectFile(for: .image) }
+                    )
+                    
+                    // Documento
+                    FileSelectionRow(
+                        title: "Documento principal",
+                        selectedFile: $selectedDocumentFile,
+                        existingUrl: $documentUrl,
+                        isUploading: isUploadingDocument,
+                        fileType: .document,
+                        onSelect: { selectFile(for: .document) }
+                    )
+                    
+                    // Multimedia
+                    FileSelectionRow(
+                        title: "Multimedia principal",
+                        selectedFile: $selectedMultimediaFile,
+                        existingUrl: $multimediaUrl,
+                        isUploading: isUploadingMultimedia,
+                        fileType: .multimedia,
+                        onSelect: { selectFile(for: .multimedia) }
+                    )
+                }
+                
+                if let uploadError = uploadError {
+                    Section {
+                        Text("❌ Error: \(uploadError)")
+                            .foregroundColor(.red)
+                            .font(.caption)
+                    }
                 }
                 
                 if showValidationError {
@@ -731,52 +803,222 @@ struct AddRowView: View {
             HStack {
                 Spacer()
                 Button("Guardar") {
-                    if hasRequiredData {
-                        let files = RowFiles(
-                            image: imageUrl.isEmpty ? nil : imageUrl,
-                            images: [],
-                            document: documentUrl.isEmpty ? nil : documentUrl,
-                            documents: [],
-                            multimedia: multimediaUrl.isEmpty ? nil : multimediaUrl,
-                            multimediaFiles: []
-                        )
-                        onSave(data, files)
-                        presentationMode.wrappedValue.dismiss()
-                    } else {
-                        showValidationError = true
+                    Task {
+                        await uploadFilesAndSave()
                     }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(isUploading || !hasRequiredData)
             }
             .padding()
         }
         .frame(width: 500, height: 600)
     }
+    
+    // MARK: - Funciones de selección y subida de archivos
+    
+    private func selectFile(for fileType: FileType) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        
+        // Configurar tipos permitidos según el tipo de archivo
+        switch fileType {
+        case .image:
+            panel.allowedContentTypes = [.png, .jpeg, .gif, .bmp, .tiff, .heic]
+            panel.message = "Selecciona una imagen (máx. 20MB)"
+        case .document:
+            panel.allowedContentTypes = [.plainText, .rtf, .html, 
+                                        UTType(filenameExtension: "doc")!,
+                                        UTType(filenameExtension: "docx")!,
+                                        UTType(filenameExtension: "xls")!,
+                                        UTType(filenameExtension: "xlsx")!]
+            panel.message = "Selecciona un documento (máx. 50MB)"
+        case .pdf:
+            panel.allowedContentTypes = [.pdf]
+            panel.message = "Selecciona un PDF (máx. 50MB)"
+        case .multimedia:
+            panel.allowedContentTypes = [.movie, .audio, .mpeg4Movie, .quickTimeMovie,
+                                        UTType(filenameExtension: "mp3")!,
+                                        UTType(filenameExtension: "wav")!,
+                                        UTType(filenameExtension: "avi")!]
+            panel.message = "Selecciona un archivo multimedia (máx. 300MB)"
+        }
+        
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                // Validar tamaño del archivo
+                do {
+                    let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                    let fileSize = attributes[.size] as? Int64 ?? 0
+                    
+                    let maxSize: Int64
+                    switch fileType {
+                    case .image: maxSize = 20 * 1024 * 1024 // 20MB
+                    case .document: maxSize = 50 * 1024 * 1024 // 50MB
+                    case .pdf: maxSize = 50 * 1024 * 1024 // 50MB
+                    case .multimedia: maxSize = 300 * 1024 * 1024 // 300MB
+                    }
+                    
+                    if fileSize > maxSize {
+                        let maxSizeMB = maxSize / (1024 * 1024)
+                        self.uploadError = "El archivo excede el tamaño máximo de \(maxSizeMB)MB"
+                        return
+                    }
+                    
+                    // Guardar el archivo seleccionado
+                    switch fileType {
+                    case .image:
+                        self.selectedImageFile = url
+                        self.uploadError = nil
+                    case .document, .pdf:
+                        self.selectedDocumentFile = url
+                        self.uploadError = nil
+                    case .multimedia:
+                        self.selectedMultimediaFile = url
+                        self.uploadError = nil
+                    }
+                } catch {
+                    self.uploadError = "Error al validar el archivo: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    private func uploadFilesAndSave() async {
+        // Validar que hay datos
+        guard hasRequiredData else {
+            showValidationError = true
+            return
+        }
+        
+        // Limpiar error previo
+        uploadError = nil
+        
+        // Subir archivos si están seleccionados
+        var finalImageUrl = imageUrl
+        var finalDocumentUrl = documentUrl
+        var finalMultimediaUrl = multimediaUrl
+        
+        // Obtener userId del usuario autenticado
+        guard let userId = authViewModel.currentUser?.id else {
+            uploadError = "Error: Usuario no autenticado"
+            return
+        }
+        
+        // Subir imagen si está seleccionada
+        if let imageFile = selectedImageFile {
+            isUploadingImage = true
+            do {
+                finalImageUrl = try await S3Service.shared.uploadFile(
+                    fileUrl: imageFile,
+                    userId: userId,
+                    catalogId: catalogId,
+                    fileType: .image
+                )
+            } catch {
+                uploadError = "Error al subir imagen: \(error.localizedDescription)"
+                isUploadingImage = false
+                return
+            }
+            isUploadingImage = false
+        }
+        
+        // Subir documento si está seleccionado
+        if let documentFile = selectedDocumentFile {
+            isUploadingDocument = true
+            do {
+                finalDocumentUrl = try await S3Service.shared.uploadFile(
+                    fileUrl: documentFile,
+                    userId: userId,
+                    catalogId: catalogId,
+                    fileType: .document
+                )
+            } catch {
+                uploadError = "Error al subir documento: \(error.localizedDescription)"
+                isUploadingDocument = false
+                return
+            }
+            isUploadingDocument = false
+        }
+        
+        // Subir multimedia si está seleccionado
+        if let multimediaFile = selectedMultimediaFile {
+            isUploadingMultimedia = true
+            do {
+                finalMultimediaUrl = try await S3Service.shared.uploadFile(
+                    fileUrl: multimediaFile,
+                    userId: userId,
+                    catalogId: catalogId,
+                    fileType: .multimedia
+                )
+            } catch {
+                uploadError = "Error al subir multimedia: \(error.localizedDescription)"
+                isUploadingMultimedia = false
+                return
+            }
+            isUploadingMultimedia = false
+        }
+        
+        // Crear objeto RowFiles con las URLs finales
+        let files = RowFiles(
+            image: finalImageUrl.isEmpty ? nil : finalImageUrl,
+            images: [],
+            document: finalDocumentUrl.isEmpty ? nil : finalDocumentUrl,
+            documents: [],
+            multimedia: finalMultimediaUrl.isEmpty ? nil : finalMultimediaUrl,
+            multimediaFiles: []
+        )
+        
+        // Guardar los datos
+        onSave(data, files)
+        presentationMode.wrappedValue.dismiss()
+    }
 }
 
 struct EditRowView: View {
     @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var data: [String: String]
     @State private var imageUrl: String
     @State private var documentUrl: String
     @State private var multimediaUrl: String
+    
+    // Estados para archivos seleccionados
+    @State private var selectedImageFile: URL?
+    @State private var selectedDocumentFile: URL?
+    @State private var selectedMultimediaFile: URL?
+    
+    // Estados de subida
+    @State private var isUploadingImage = false
+    @State private var isUploadingDocument = false
+    @State private var isUploadingMultimedia = false
+    @State private var uploadError: String?
+    
+    // Computed property para saber si hay subida en progreso
+    private var isUploading: Bool {
+        isUploadingImage || isUploadingDocument || isUploadingMultimedia
+    }
 
     let columns: [String]
+    let catalogId: String
     let onSave: ([String: String], RowFiles) -> Void
 
-    init(data: [String: String], files: RowFiles, columns: [String], onSave: @escaping ([String: String], RowFiles) -> Void) {
+    init(data: [String: String], files: RowFiles, columns: [String], catalogId: String, onSave: @escaping ([String: String], RowFiles) -> Void) {
         print("🔍 DEBUG - EditRowView init:")
         print("  data recibido: \(data)")
         print("  columns: \(columns)")
         print("  files.image: \(files.image ?? "nil")")
         print("  files.document: \(files.document ?? "nil")")
         print("  files.multimedia: \(files.multimedia ?? "nil")")
-        
+
         _data = State(initialValue: data)
         _imageUrl = State(initialValue: files.image ?? "")
         _documentUrl = State(initialValue: files.document ?? "")
         _multimediaUrl = State(initialValue: files.multimedia ?? "")
         self.columns = columns
+        self.catalogId = catalogId
         self.onSave = onSave
     }
 
@@ -797,36 +1039,211 @@ struct EditRowView: View {
                             get: { data[column] ?? "" },
                             set: { data[column] = $0 }
                         ))
+                        .disabled(isUploading)
                     }
                 }
 
-                Section(header: Text("Archivos")) {
-                    TextField("URL de imagen", text: $imageUrl)
-                    TextField("URL de documento", text: $documentUrl)
-                    TextField("URL de multimedia", text: $multimediaUrl)
+                Section(header: Text("Archivos (opcional)")) {
+                    FileSelectionRow(
+                        title: "Imagen principal",
+                        selectedFile: $selectedImageFile,
+                        existingUrl: $imageUrl,
+                        isUploading: isUploadingImage,
+                        fileType: .image,
+                        onSelect: { selectFile(for: .image) }
+                    )
+                    
+                    FileSelectionRow(
+                        title: "Documento principal",
+                        selectedFile: $selectedDocumentFile,
+                        existingUrl: $documentUrl,
+                        isUploading: isUploadingDocument,
+                        fileType: .document,
+                        onSelect: { selectFile(for: .document) }
+                    )
+                    
+                    FileSelectionRow(
+                        title: "Multimedia principal",
+                        selectedFile: $selectedMultimediaFile,
+                        existingUrl: $multimediaUrl,
+                        isUploading: isUploadingMultimedia,
+                        fileType: .multimedia,
+                        onSelect: { selectFile(for: .multimedia) }
+                    )
                 }
             }
             .padding()
 
             HStack {
                 Spacer()
-                Button("Guardar") {
-                    let files = RowFiles(
-                        image: imageUrl.isEmpty ? nil : imageUrl,
-                        images: [],
-                        document: documentUrl.isEmpty ? nil : documentUrl,
-                        documents: [],
-                        multimedia: multimediaUrl.isEmpty ? nil : multimediaUrl,
-                        multimediaFiles: []
-                    )
-                    onSave(data, files)
-                    presentationMode.wrappedValue.dismiss()
+                Button(isUploading ? "Subiendo..." : "Guardar") {
+                    Task {
+                        await uploadFilesAndSave()
+                    }
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(isUploading)
             }
             .padding()
         }
         .frame(width: 500, height: 600)
+    }
+    
+    // MARK: - Funciones de selección de archivos
+    
+    private func selectFile(for fileType: FileType) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        
+        // Configurar filtros según el tipo de archivo
+        switch fileType {
+        case .image:
+            panel.allowedContentTypes = [.png, .jpeg, .gif, .bmp, .tiff, .heic]
+            panel.message = "Selecciona una imagen (máx. 20MB)"
+        case .document:
+            panel.allowedContentTypes = [.plainText, .rtf, .html, .pdf]
+            panel.message = "Selecciona un documento (máx. 50MB)"
+        case .pdf:
+            panel.allowedContentTypes = [.pdf]
+            panel.message = "Selecciona un PDF (máx. 50MB)"
+        case .multimedia:
+            panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie, .avi, .mpeg, .mp3, .wav]
+            panel.message = "Selecciona un archivo multimedia (máx. 300MB)"
+        }
+        
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            
+            // Validar tamaño del archivo
+            do {
+                let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+                let fileSize = attributes[.size] as? Int64 ?? 0
+                let maxSize: Int64
+                
+                switch fileType {
+                case .image:
+                    maxSize = 20 * 1024 * 1024 // 20MB
+                case .document, .pdf:
+                    maxSize = 50 * 1024 * 1024 // 50MB
+                case .multimedia:
+                    maxSize = 300 * 1024 * 1024 // 300MB
+                }
+                
+                if fileSize > maxSize {
+                    uploadError = "El archivo excede el tamaño máximo permitido"
+                    return
+                }
+                
+                // Asignar el archivo seleccionado
+                switch fileType {
+                case .image:
+                    selectedImageFile = url
+                case .document, .pdf:
+                    selectedDocumentFile = url
+                case .multimedia:
+                    selectedMultimediaFile = url
+                }
+                
+                uploadError = nil
+            } catch {
+                uploadError = "Error al validar el archivo: \(error.localizedDescription)"
+            }
+        }
+    }
+    
+    // MARK: - Función de subida de archivos
+    
+    private func uploadFilesAndSave() async {
+        print("🔐 Obteniendo usuario actual para subida de archivos")
+        guard let userId = authViewModel.currentUser?.id else {
+            uploadError = "Error: Usuario no autenticado"
+            return
+        }
+        
+        print("👤 Usuario ID: \(userId)")
+        
+        var finalImageUrl = imageUrl
+        var finalDocumentUrl = documentUrl
+        var finalMultimediaUrl = multimediaUrl
+        
+        // Subir imagen si hay una seleccionada
+        if let imageFile = selectedImageFile {
+            print("📤 Iniciando subida de imagen...")
+            isUploadingImage = true
+            do {
+                let url = try await S3Service.shared.uploadFile(
+                    fileUrl: imageFile,
+                    userId: userId,
+                    catalogId: catalogId,
+                    fileType: .image
+                )
+                finalImageUrl = url
+                print("✅ Imagen subida exitosamente: \(url)")
+            } catch {
+                uploadError = "Error al subir imagen: \(error.localizedDescription)"
+                isUploadingImage = false
+                return
+            }
+            isUploadingImage = false
+        }
+        
+        // Subir documento si hay uno seleccionado
+        if let documentFile = selectedDocumentFile {
+            print("📤 Iniciando subida de documento...")
+            isUploadingDocument = true
+            do {
+                let url = try await S3Service.shared.uploadFile(
+                    fileUrl: documentFile,
+                    userId: userId,
+                    catalogId: catalogId,
+                    fileType: .document
+                )
+                finalDocumentUrl = url
+                print("✅ Documento subido exitosamente: \(url)")
+            } catch {
+                uploadError = "Error al subir documento: \(error.localizedDescription)"
+                isUploadingDocument = false
+                return
+            }
+            isUploadingDocument = false
+        }
+        
+        // Subir multimedia si hay uno seleccionado
+        if let multimediaFile = selectedMultimediaFile {
+            print("📤 Iniciando subida de multimedia...")
+            isUploadingMultimedia = true
+            do {
+                let url = try await S3Service.shared.uploadFile(
+                    fileUrl: multimediaFile,
+                    userId: userId,
+                    catalogId: catalogId,
+                    fileType: .multimedia
+                )
+                finalMultimediaUrl = url
+                print("✅ Multimedia subido exitosamente: \(url)")
+            } catch {
+                uploadError = "Error al subir multimedia: \(error.localizedDescription)"
+                isUploadingMultimedia = false
+                return
+            }
+            isUploadingMultimedia = false
+        }
+        
+        // Crear objeto RowFiles con las URLs finales
+        let files = RowFiles(
+            image: finalImageUrl.isEmpty ? nil : finalImageUrl,
+            images: [],
+            document: finalDocumentUrl.isEmpty ? nil : finalDocumentUrl,
+            documents: [],
+            multimedia: finalMultimediaUrl.isEmpty ? nil : finalMultimediaUrl,
+            multimediaFiles: []
+        )
+        
+        print("💾 Guardando fila en MongoDB...")
+        onSave(data, files)
+        presentationMode.wrappedValue.dismiss()
     }
 }
 
@@ -836,6 +1253,10 @@ struct FileViewerView: View {
     let url: String
     let fileName: String
     @Environment(\.presentationMode) var presentationMode
+    
+    @State private var presignedUrl: URL?
+    @State private var urlError: String?
+    @State private var isLoadingPresigned = false
 
     // Deducción local del "tipo" por extensión — evita ambigüedad con FileType
     private enum LocalFileKind { case image, pdf, video, other }
@@ -854,16 +1275,20 @@ struct FileViewerView: View {
     }
 
     private var resolvedURL: URL? {
-        // Prefer presigned/absolute URL to the original string
-        return URL(string: url)
+        // Usar la URL pre-firmada si está disponible, sino la original
+        return presignedUrl ?? URL(string: url)
     }
 
     var body: some View {
-        VStack(spacing: 20) {
+        let _ = print("📺 DEBUG - FileViewerView body renderizado:")
+        let _ = print("  URL: \(url)")
+        let _ = print("  fileName: \(fileName)")
+        
+        return VStack(spacing: 0) {
             // Header
             HStack {
                 Text("Visor de Archivo")
-                    .font(.largeTitle)
+                    .font(.title)
                     .fontWeight(.bold)
 
                 Spacer()
@@ -871,81 +1296,147 @@ struct FileViewerView: View {
                 Button("Cerrar") { presentationMode.wrappedValue.dismiss() }
                     .buttonStyle(.bordered)
             }
-            .padding()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
 
-            // Content
-            VStack(spacing: 20) {
-                Image(systemName: fileTypeIcon)
-                    .resizable()
-                    .frame(width: 80, height: 80)
-                    .foregroundColor(.blue)
-
-                Text("Archivo: \(fileName)")
-                    .font(.headline)
-
-                Text("URL: \(url)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
+            // ScrollView para el contenido
+            ScrollView {
+                VStack(spacing: 15) {
+                    // Icono y metadata - más compacto
+                    HStack(spacing: 15) {
+                        Image(systemName: fileTypeIcon)
+                            .resizable()
+                            .frame(width: 40, height: 40)
+                            .foregroundColor(.blue)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(fileName)
+                                .font(.headline)
+                                .lineLimit(1)
+                            
+                            Text(fileTypeDescription)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        Spacer()
+                    }
                     .padding(.horizontal, 20)
+                    .padding(.top, 10)
+                    
+                    Divider()
 
-                Text("Tipo: \(fileTypeDescription)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-
-            // Preview inline (incluye .pdf)
-            Group {
-                switch kind {
-                case .image:
-                    if let u = resolvedURL {
-                        if #available(macOS 12.0, *) {
-                            AsyncImage(url: u) { phase in
-                                switch phase {
-                                case .empty:
-                                    ProgressView()
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .scaledToFit()
-                                case .failure:
-                                    Text("No se pudo cargar la imagen.")
-                                @unknown default:
-                                    EmptyView()
-                                }
+                    // Vista previa
+                    Group {
+                        if isLoadingPresigned {
+                            VStack {
+                                ProgressView()
+                                Text("Cargando archivo...")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(minHeight: 200)
+                        } else if let error = urlError {
+                            VStack {
+                                Text("⚠️ \(error)")
+                                    .foregroundColor(.orange)
+                                    .multilineTextAlignment(.center)
                             }
                             .frame(minHeight: 200)
                         } else {
-                            Text("Vista previa de imagen no disponible en esta versión de macOS.")
+                            switch kind {
+                            case .image:
+                                if let u = resolvedURL {
+                                    if #available(macOS 12.0, *) {
+                                        AsyncImage(url: u) { phase in
+                                            switch phase {
+                                            case .empty:
+                                                ProgressView("Descargando imagen...")
+                                            case .success(let image):
+                                                image
+                                                    .resizable()
+                                                    .scaledToFit()
+                                                    .frame(maxHeight: 500)
+                                            case .failure(_):
+                                                VStack {
+                                                    Text("🔒 Imagen en bucket privado")
+                                                        .font(.subheadline)
+                                                    Text("Usa 'Abrir externamente' para verla")
+                                                        .font(.caption)
+                                                        .foregroundColor(.secondary)
+                                                }
+                                            @unknown default:
+                                                EmptyView()
+                                            }
+                                        }
+                                        .frame(minHeight: 200)
+                                    } else {
+                                        Text("Vista previa no disponible en esta versión de macOS")
+                                    }
+                                } else {
+                                    Text("URL inválida")
+                                }
+                            
+                            case .pdf:
+                                if let u = resolvedURL {
+                                    VStack(spacing: 10) {
+                                        PDFKitView(url: u)
+                                            .frame(height: 500)
+                                        Text("📝 Vista previa del PDF")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                } else {
+                                    VStack {
+                                        Text("📝 Archivo PDF")
+                                            .font(.subheadline)
+                                        Text("URL inválida")
+                                            .font(.caption)
+                                            .foregroundColor(.red)
+                                    }
+                                    .frame(minHeight: 200)
+                                }
+                            
+                            case .video:
+                                if let u = resolvedURL {
+                                    VStack(spacing: 10) {
+                                        VideoPlayerView(url: u)
+                                            .frame(height: 500)
+                                            .cornerRadius(10)
+                                        Text("🎥 Reproductor de video")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                } else {
+                                    VStack {
+                                        Text("🎥 Archivo de video")
+                                            .font(.subheadline)
+                                        Text("URL inválida")
+                                            .font(.caption)
+                                            .foregroundColor(.red)
+                                    }
+                                    .frame(minHeight: 200)
+                                }
+                            
+                            case .other:
+                                VStack {
+                                    Text("📄 Archivo")
+                                        .font(.subheadline)
+                                    Text("Usa 'Abrir externamente' para verlo")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .frame(minHeight: 200)
+                            }
                         }
-                    } else {
-                        Text("URL de imagen inválida")
                     }
-
-                case .pdf:
-                    if let u = resolvedURL {
-                        PDFKitView(url: u)
-                            .frame(minHeight: 300)
-                    } else {
-                        Text("URL de PDF inválida")
-                    }
-
-                case .video:
-                    if let u = resolvedURL {
-                        VideoPlayer(player: AVPlayer(url: u))
-                            .frame(minHeight: 240)
-                    } else {
-                        Text("URL de vídeo inválida")
-                    }
-
-                case .other:
-                    Text("Este tipo de archivo no tiene vista previa integrada.")
+                    .padding(.horizontal)
                 }
+                .padding(.bottom, 20)
             }
-            .padding(.horizontal)
 
-            // Footer
+            // Footer - SIEMPRE VISIBLE
+            Divider()
             HStack {
                 Button("Descargar") { downloadFile() }
                     .buttonStyle(.bordered)
@@ -956,8 +1447,37 @@ struct FileViewerView: View {
                     .buttonStyle(.bordered)
             }
             .padding()
+            .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 500, height: 400)
+        .frame(width: 900, height: 800)
+        .onAppear {
+            loadPresignedUrl()
+        }
+    }
+    
+    private func loadPresignedUrl() {
+        isLoadingPresigned = true
+        
+        Task {@MainActor in
+            do {
+                print("🔑 Solicitando URL pre-firmada para: \(url)")
+                let s3Service = S3Service.shared
+                let signed = try await s3Service.generatePresignedUrl(for: url, expirationInSeconds: 3600)
+                
+                print("✅ URL pre-firmada recibida")
+                self.presignedUrl = signed
+                self.isLoadingPresigned = false
+            } catch {
+                print("❌ Error: \(error)")
+                // Fallback a URL directa
+                if let directUrl = URL(string: url) {
+                    self.presignedUrl = directUrl
+                } else {
+                    self.urlError = "URL inválida: \(url)"
+                }
+                self.isLoadingPresigned = false
+            }
+        }
     }
 
     private var fileTypeIcon: String {
@@ -987,32 +1507,22 @@ struct FileViewerView: View {
     }
 
     private func downloadFile() {
-        Task {
-            do {
-                let s3Service = S3Service.shared
-                let presignedUrl = try await s3Service.generatePresignedUrl(for: url)
-                NSWorkspace.shared.open(presignedUrl)
-            } catch {
-                // Fallback a la URL original
-                if let urlObj = URL(string: url) {
-                    NSWorkspace.shared.open(urlObj)
-                }
-            }
+        // Abrir URL directamente en el navegador
+        if let urlObj = URL(string: url) {
+            print("👁 Abriendo URL para descargar: \(url)")
+            NSWorkspace.shared.open(urlObj)
+        } else {
+            print("❌ URL inválida para descargar: \(url)")
         }
     }
 
     private func openExternally() {
-        Task {
-            do {
-                let s3Service = S3Service.shared
-                let presignedUrl = try await s3Service.generatePresignedUrl(for: url)
-                NSWorkspace.shared.open(presignedUrl)
-            } catch {
-                // Fallback a la URL original
-                if let urlObj = URL(string: url) {
-                    NSWorkspace.shared.open(urlObj)
-                }
-            }
+        // Abrir URL directamente en el navegador
+        if let urlObj = URL(string: url) {
+            print("👁 Abriendo URL externamente: \(url)")
+            NSWorkspace.shared.open(urlObj)
+        } else {
+            print("❌ URL inválida para abrir: \(url)")
         }
     }
 }
@@ -1034,6 +1544,29 @@ struct PDFKitView: NSViewRepresentable {
     func updateNSView(_ nsView: PDFView, context: Context) {
         if nsView.document == nil || nsView.document?.documentURL != url {
             nsView.document = PDFDocument(url: url)
+        }
+    }
+}
+
+struct VideoPlayerView: NSViewRepresentable {
+    let url: URL
+    
+    func makeNSView(context: Context) -> AVPlayerView {
+        let playerView = AVPlayerView()
+        playerView.controlsStyle = .floating
+        playerView.showsFullScreenToggleButton = true
+        
+        let player = AVPlayer(url: url)
+        playerView.player = player
+        
+        return playerView
+    }
+    
+    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        if nsView.player?.currentItem?.asset as? AVURLAsset == nil ||
+           (nsView.player?.currentItem?.asset as? AVURLAsset)?.url != url {
+            let player = AVPlayer(url: url)
+            nsView.player = player
         }
     }
 }

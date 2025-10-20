@@ -37,10 +37,18 @@ fi
 echo -e "${GREEN}✅ Variables de entorno cargadas:${NC}"
 echo "   MONGODB_URI: ${MONGODB_URI:0:30}..."
 echo "   MONGODB_DB: $MONGODB_DB"
+echo "   AWS_REGION: $AWS_REGION"
+echo "   S3_BUCKET_NAME: $S3_BUCKET_NAME"
+
+# Verificar que el bundle existe
+if [ ! -d "bin/EDF Catálogo de Tablas.app" ]; then
+    echo -e "${YELLOW}⚠️  Bundle no encontrado, creándolo...${NC}"
+    ./create_app_bundle.sh
+fi
 
 # Lanzar la aplicación
 echo -e "${GREEN}🚀 Lanzando aplicación...${NC}"
-open -a "bin/EDF Catálogo de Tablas.app" --env MONGODB_URI="$MONGODB_URI" --env MONGODB_DB="$MONGODB_DB"
+open "bin/EDF Catálogo de Tablas.app"
 
 echo -e "${GREEN}✅ Aplicación lanzada${NC}"
 echo ""

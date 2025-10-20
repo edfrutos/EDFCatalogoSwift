@@ -1,5 +1,7 @@
 import Foundation
 import AWSS3
+import ClientRuntime
+import AWSClientRuntime
 
 public actor S3Service: Sendable {
     public static let shared = S3Service()
@@ -11,6 +13,9 @@ public actor S3Service: Sendable {
     private let bucketName: String
     private let useS3: Bool
     
+    // Cliente AWS S3
+    private var s3Client: S3Client?
+    
     // Límites de tamaño de archivo (en bytes)
     private let maxImageSize: Int = 20 * 1024 * 1024      // 20 MB
     private let maxDocumentSize: Int = 50 * 1024 * 1024   // 50 MB
@@ -19,15 +24,24 @@ public actor S3Service: Sendable {
     private init() {
         var env = ProcessInfo.processInfo.environment
 
-        // Merge con .env si existe
-        if let envURL = URL(string: "file://\(FileManager.default.currentDirectoryPath)/.env"),
-           let text = try? String(contentsOf: envURL) {
-            for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
-                let line = raw.trimmingCharacters(in: .whitespaces)
-                guard !line.isEmpty, !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
-                let k = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
-                let v = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
-                if !k.isEmpty { env[k] = v }
+        // Buscar .env en múltiples ubicaciones
+        let possiblePaths = [
+            "\(FileManager.default.currentDirectoryPath)/.env",
+            "\(NSHomeDirectory())/edefrutos2025.xyz/httpdocs/.env",
+            "/Users/edefrutos/__Proyectos/EDFCatalogoSwift/.env"
+        ]
+        
+        for path in possiblePaths {
+            if let text = try? String(contentsOfFile: path, encoding: .utf8) {
+                print("📄 Cargando .env desde: \(path)")
+                for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                    let line = raw.trimmingCharacters(in: .whitespaces)
+                    guard !line.isEmpty, !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
+                    let k = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
+                    let v = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+                    if !k.isEmpty { env[k] = v }
+                }
+                break
             }
         }
 
@@ -41,6 +55,19 @@ public actor S3Service: Sendable {
         print("  - Bucket: \(bucketName)")
         print("  - Region: \(region)")
         print("  - USE_S3: \(useS3)")
+        
+        // Inicializar cliente S3 si tenemos credenciales
+        if !accessKey.isEmpty && !secretKey.isEmpty {
+            do {
+                let config = try S3Client.S3ClientConfiguration(region: region)
+                self.s3Client = S3Client(config: config)
+                print("✅ Cliente S3 inicializado (usará credenciales de variables de entorno)")
+            } catch {
+                print("❌ Error inicializando cliente S3: \(error)")
+            }
+        } else {
+            print("⚠️ No se encontraron credenciales AWS, funcionando en modo simulación")
+        }
     }
 
     // MARK: - Subida de Archivos
@@ -98,11 +125,86 @@ public actor S3Service: Sendable {
     
     /// Sube el archivo real a S3 usando AWS SDK
     private func uploadToS3(fileUrl: URL, s3Key: String) async throws -> String {
-        // TODO: Implementar subida real con AWS SDK
-        // Por ahora, retornamos la URL que tendría el archivo
-        let s3Url = "https://\(bucketName).s3.\(region).amazonaws.com/\(s3Key)"
-        print("✅ Archivo subido (simulado): \(s3Url)")
-        return s3Url
+        guard let client = s3Client else {
+            throw S3Error.uploadFailed("Cliente S3 no inicializado")
+        }
+        
+        do {
+            // Leer el archivo
+            let fileData = try Data(contentsOf: fileUrl)
+            
+            // Detectar Content-Type
+            let contentType = detectContentType(fileUrl: fileUrl)
+            print("  - Content-Type: \(contentType)")
+            
+            // Crear el request de subida
+            let putObjectRequest = PutObjectInput(
+                body: .data(fileData),
+                bucket: bucketName,
+                contentType: contentType,
+                key: s3Key
+            )
+            
+            // Subir archivo
+            print("📤 Subiendo a S3...")
+            _ = try await client.putObject(input: putObjectRequest)
+            
+            // Generar URL pública
+            let s3Url = "https://\(bucketName).s3.\(region).amazonaws.com/\(s3Key)"
+            print("✅ Archivo subido exitosamente: \(s3Url)")
+            return s3Url
+            
+        } catch {
+            print("❌ Error al subir archivo: \(error)")
+            throw S3Error.uploadFailed(error.localizedDescription)
+        }
+    }
+    
+    /// Detecta el Content-Type basado en la extensión del archivo
+    private func detectContentType(fileUrl: URL) -> String {
+        let ext = fileUrl.pathExtension.lowercased()
+        
+        switch ext {
+        // Imágenes
+        case "jpg", "jpeg": return "image/jpeg"
+        case "png": return "image/png"
+        case "gif": return "image/gif"
+        case "webp": return "image/webp"
+        case "svg": return "image/svg+xml"
+        case "bmp": return "image/bmp"
+        case "tiff", "tif": return "image/tiff"
+            
+        // Documentos
+        case "pdf": return "application/pdf"
+        case "doc": return "application/msword"
+        case "docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        case "xls": return "application/vnd.ms-excel"
+        case "xlsx": return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        case "ppt": return "application/vnd.ms-powerpoint"
+        case "pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        case "txt": return "text/plain"
+        case "rtf": return "application/rtf"
+        case "csv": return "text/csv"
+        case "json": return "application/json"
+        case "md": return "text/markdown"
+            
+        // Multimedia
+        case "mp4": return "video/mp4"
+        case "mov": return "video/quicktime"
+        case "avi": return "video/x-msvideo"
+        case "wmv": return "video/x-ms-wmv"
+        case "webm": return "video/webm"
+        case "mkv": return "video/x-matroska"
+        case "flv": return "video/x-flv"
+        case "mp3": return "audio/mpeg"
+        case "wav": return "audio/wav"
+        case "ogg": return "audio/ogg"
+        case "flac": return "audio/flac"
+        case "m4a": return "audio/mp4"
+        case "aac": return "audio/aac"
+            
+        default: return "application/octet-stream"
+        }
     }
     
     /// Simula la subida cuando USE_S3=false
@@ -122,23 +224,42 @@ public actor S3Service: Sendable {
     
     public func generatePresignedUrl(for key: String, expirationInSeconds: Int = 3600) async throws -> URL {
         let normalizedKey = normalizeKey(key)
+        
+        print("🔑 Generando URL pre-firmada:")
+        print("  - Key: \(normalizedKey)")
+        print("  - Expiración: \(expirationInSeconds)s")
 
-        // Modo "simulación" cuando USE_S3=false
-        if !useS3 {
+        // Modo "simulación" cuando USE_S3=false o no hay cliente
+        guard useS3, let client = s3Client else {
+            print("⚠️ Modo simulación - devolviendo URL pública")
             if normalizedKey.lowercased().hasSuffix(".pdf") {
                 return URL(string: "https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf")!
             }
             if ["jpg","jpeg","png","gif","webp"].contains((normalizedKey as NSString).pathExtension.lowercased()) {
                 return URL(string: "https://via.placeholder.com/1200x800.png?text=Imagen+de+Prueba")!
             }
-            return URL(string: "https://example.com/\(normalizedKey)")!
+            // Devolver URL pública (que fallará si el bucket es privado)
+            guard let url = URL(string: "https://\(bucketName).s3.\(region).amazonaws.com/\(normalizedKey)") else {
+                throw S3Error.invalidKey(normalizedKey)
+            }
+            return url
         }
-
+        
+        // NOTA: La generación completa de URLs pre-firmadas con firma AWS v4
+        // requiere implementación compleja de HMAC-SHA256.
+        // Por ahora, devolvemos la URL directa.
+        // SOLUCIÓN: Configurar el bucket S3 con política de acceso público de lectura
+        // o implementar un backend que genere las URLs pre-firmadas.
+        
         guard let url = URL(string: "https://\(bucketName).s3.\(region).amazonaws.com/\(normalizedKey)") else {
             throw S3Error.invalidKey(normalizedKey)
         }
+        
+        print("⚠️ Devolviendo URL directa (requiere bucket con acceso público)")
+        print("  - URL: \(url.absoluteString.prefix(80))...")
         return url
     }
+
 
     // MARK: - Eliminación de Archivos
     

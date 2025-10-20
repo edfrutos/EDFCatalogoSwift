@@ -27,14 +27,37 @@ public actor MongoService: Sendable {
         isConnecting = true
         defer { isConnecting = false }
 
+        // Cargar variables del .env si existe
+        var env = ProcessInfo.processInfo.environment
+        
+        let possiblePaths = [
+            "\(FileManager.default.currentDirectoryPath)/.env",
+            "\(NSHomeDirectory())/edefrutos2025.xyz/httpdocs/.env",
+            "/Users/edefrutos/__Proyectos/EDFCatalogoSwift/.env"
+        ]
+        
+        for path in possiblePaths {
+            if let text = try? String(contentsOfFile: path, encoding: .utf8) {
+                print("📄 MongoService cargando .env desde: \(path)")
+                for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
+                    let line = raw.trimmingCharacters(in: .whitespaces)
+                    guard !line.isEmpty, !line.hasPrefix("#"), let eq = line.firstIndex(of: "=") else { continue }
+                    let k = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
+                    let v = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
+                    if !k.isEmpty { env[k] = v }
+                }
+                break
+            }
+        }
+        
         // Intentar primero MONGO_URI, luego MONGODB_URI como fallback
-        let uri = ProcessInfo.processInfo.environment["MONGO_URI"] 
-            ?? ProcessInfo.processInfo.environment["MONGODB_URI"] 
+        let uri = env["MONGO_URI"] 
+            ?? env["MONGODB_URI"] 
             ?? "mongodb://localhost:27017"
         
         // Intentar primero MONGO_DB, luego MONGODB_DB como fallback
-        let dbName = ProcessInfo.processInfo.environment["MONGO_DB"]
-            ?? ProcessInfo.processInfo.environment["MONGODB_DB"] 
+        let dbName = env["MONGO_DB"]
+            ?? env["MONGODB_DB"] 
             ?? "edf_catalogotablas"
 
         print("🔌 Intentando conectar a MongoDB...")
@@ -45,8 +68,12 @@ public actor MongoService: Sendable {
             let g = MultiThreadedEventLoopGroup(numberOfThreads: 2)
             self.group = g
             
-            // Crear cliente con timeout
-            self.client = try MongoClient(uri, using: g)
+            // Crear cliente con opciones de timeout
+            var opts = MongoClientOptions()
+            opts.serverSelectionTimeoutMS = 5000  // 5 segundos
+            opts.connectTimeoutMS = 5000           // 5 segundos
+            
+            self.client = try MongoClient(uri, using: g, options: opts)
             self.db = client!.db(dbName)
             
             print("✅ Conexión a MongoDB establecida correctamente")
