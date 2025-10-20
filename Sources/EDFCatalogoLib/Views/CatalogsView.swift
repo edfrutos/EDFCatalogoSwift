@@ -99,6 +99,7 @@ public struct CatalogsView: View {
     @State private var catalogToDelete: Int?
     @State private var showingDeleteAlert = false
     @State private var searchText = ""
+    @State private var showingUserProfile = false
     
     public init() {}
     
@@ -120,6 +121,20 @@ public struct CatalogsView: View {
             HStack {
                 Text("Catálogos").font(.largeTitle).bold()
                 Spacer()
+                
+                // Botón de perfil de usuario
+                if let user = authViewModel.currentUser {
+                    Button {
+                        showingUserProfile = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.circle")
+                            Text(user.name)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                }
+                
                 Button {
                     showingCreateSheet = true
                 } label: {
@@ -260,6 +275,11 @@ public struct CatalogsView: View {
         } message: {
             if let index = catalogToDelete {
                 Text("¿Estás seguro de que quieres eliminar '\(viewModel.catalogs[index].name)'? Esta acción no se puede deshacer.")
+            }
+        }
+        .sheet(isPresented: $showingUserProfile) {
+            if let user = authViewModel.currentUser {
+                UserProfileView(user: user)
             }
         }
     }

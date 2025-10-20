@@ -99,6 +99,16 @@ extension MongoService {
         let role = userDoc["Role"]?.stringValue ?? ""
         let isAdmin = (role.lowercased() == "admin")
         
+        // Campos opcionales adicionales
+        let phone = userDoc["Phone"]?.stringValue
+        let company = userDoc["Company"]?.stringValue
+        let address = userDoc["Address"]?.stringValue
+        let occupation = userDoc["Occupation"]?.stringValue
+        let profileImageUrl = userDoc["ProfileImageUrl"]?.stringValue
+        let isActive = userDoc["IsActive"]?.boolValue
+        let createdAt = userDoc["CreatedAt"]?.dateValue
+        let lastLoginAt = userDoc["LastLoginAt"]?.dateValue
+        
         print("✅ Usuario autenticado correctamente")
         print("   Email: \(userEmail)")
         print("   Name: \(name)")
@@ -109,7 +119,15 @@ extension MongoService {
             _id: userId,
             email: userEmail,
             name: name,
-            isAdmin: isAdmin
+            isAdmin: isAdmin,
+            phone: phone,
+            company: company,
+            address: address,
+            occupation: occupation,
+            profileImageUrl: profileImageUrl,
+            isActive: isActive,
+            createdAt: createdAt,
+            lastLoginAt: lastLoginAt
         )
     }
     
@@ -154,13 +172,31 @@ extension MongoService {
         let role = userDoc["Role"]?.stringValue ?? ""
         let isAdmin = (role.lowercased() == "admin")
         
+        // Campos opcionales
+        let phone = userDoc["Phone"]?.stringValue
+        let company = userDoc["Company"]?.stringValue
+        let address = userDoc["Address"]?.stringValue
+        let occupation = userDoc["Occupation"]?.stringValue
+        let profileImageUrl = userDoc["ProfileImageUrl"]?.stringValue
+        let isActive = userDoc["IsActive"]?.boolValue
+        let createdAt = userDoc["CreatedAt"]?.dateValue
+        let lastLoginAt = userDoc["LastLoginAt"]?.dateValue
+        
         print("✅ Usuario obtenido correctamente")
         
         return User(
             _id: userId,
             email: userEmail,
             name: name,
-            isAdmin: isAdmin
+            isAdmin: isAdmin,
+            phone: phone,
+            company: company,
+            address: address,
+            occupation: occupation,
+            profileImageUrl: profileImageUrl,
+            isActive: isActive,
+            createdAt: createdAt,
+            lastLoginAt: lastLoginAt
         )
     }
 }
