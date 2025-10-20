@@ -1,6 +1,7 @@
 import SwiftUI
 import PDFKit
 import AVKit
+import UniformTypeIdentifiers
 @preconcurrency import SwiftBSON
 
 // MARK: - ViewModel
@@ -650,6 +651,8 @@ struct FileItemView: View {
 
 struct AddRowView: View {
     @Environment(\.presentationMode) var presentationMode
+    @EnvironmentObject private var authViewModel: AuthViewModel
+    
     let columns: [String]
     let onSave: ([String: String], RowFiles) -> Void
 
@@ -658,6 +661,17 @@ struct AddRowView: View {
     @State private var documentUrl: String = ""
     @State private var multimediaUrl: String = ""
     @State private var showValidationError = false
+    
+    // Estados para archivos seleccionados
+    @State private var selectedImageFile: URL?
+    @State private var selectedDocumentFile: URL?
+    @State private var selectedMultimediaFile: URL?
+    
+    // Estados de subida
+    @State private var isUploadingImage = false
+    @State private var isUploadingDocument = false
+    @State private var isUploadingMultimedia = false
+    @State private var uploadError: String?
 
     init(columns: [String], onSave: @escaping ([String: String], RowFiles) -> Void) {
         self.columns = columns
@@ -672,6 +686,10 @@ struct AddRowView: View {
         // Al menos un campo debe tener datos
         return data.values.contains(where: { !$0.isEmpty })
     }
+    
+    private var isUploading: Bool {
+        isUploadingImage || isUploadingDocument || isUploadingMultimedia
+    }
 
     var body: some View {
         VStack {
@@ -680,6 +698,7 @@ struct AddRowView: View {
                 Spacer()
                 Button("Cancelar") { presentationMode.wrappedValue.dismiss() }
                     .buttonStyle(.plain)
+                    .disabled(isUploading)
             }
             .padding()
 
