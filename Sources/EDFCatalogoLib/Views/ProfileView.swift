@@ -1,42 +1,130 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 public struct ProfileView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
+    @StateObject private var viewModel: UserProfileViewModel
     
-    public init() {}
+    public init() {
+        // Se inicializará en onAppear cuando tengamos el usuario
+        _viewModel = StateObject(wrappedValue: UserProfileViewModel(user: User.mock(email: "temp@temp.com")))
+    }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if let user = authViewModel.currentUser {
-                HStack {
-                    Text("Nombre:")
-                        .bold()
-                    Text(user.name)
+        ScrollView {
+            VStack(spacing: 24) {
+                // Foto de perfil
+                ProfileImageSection(viewModel: viewModel)
+                
+                Divider()
+                
+                // Información básica
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Información Básica")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Email *")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("", text: .constant(viewModel.email))
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(true)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Nombre de Usuario *")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Ej: Juan Pérez", text: $viewModel.name)
+                            .textFieldStyle(.roundedBorder)
+                    }
                 }
-                HStack {
-                    Text("Email:")
-                        .bold()
-                    Text(user.email)
+                .padding(.horizontal)
+                
+                Divider()
+                
+                // Información opcional
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Información Adicional (Opcional)")
+                        .font(.headline)
+                        .foregroundColor(.secondary)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Teléfono")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Ej: +34 600 000 000", text: $viewModel.phone)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Empresa")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Ej: Mi Empresa S.L.", text: $viewModel.company)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Ocupación")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Ej: Desarrollador", text: $viewModel.occupation)
+                            .textFieldStyle(.roundedBorder)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Dirección Postal")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextEditor(text: $viewModel.address)
+                            .frame(height: 60)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            )
+                    }
                 }
-                HStack {
-                    Text("Rol:")
-                        .bold()
-                    Text(user.isAdmin ? "Administrador" : "Usuario")
+                .padding(.horizontal)
+                
+                Divider()
+                
+                // Cambiar contraseña
+                ChangePasswordSection(viewModel: viewModel)
+                
+                // Mensajes de error/éxito
+                if let errorMessage = viewModel.errorMessage {
+                    Text(errorMessage)
+                        .foregroundColor(.red)
+                        .padding(.horizontal)
                 }
-            } else {
-                Text("No hay usuario autenticado")
-                    .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            Button("Cerrar sesión") {
-                authViewModel.signOut()
+                
+                if let successMessage = viewModel.successMessage {
+                    Text(successMessage)
+                        .foregroundColor(.green)
+                        .padding(.horizontal)
+                }
+                
+                // Botón de guardar
+                Button(viewModel.isSaving ? "Guardando..." : "Guardar Cambios") {
+                    Task {
+                        await viewModel.saveProfile()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.isSaving || !viewModel.canSave)
+                .padding(.horizontal)
+                .padding(.bottom, 20)
             }
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
         .navigationTitle("Perfil")
+        .onAppear {
+            if let user = authViewModel.currentUser {
+                viewModel.updateUser(user)
+            }
+        }
     }
 }
 
