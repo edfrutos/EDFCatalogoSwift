@@ -187,7 +187,7 @@ codesign --force --deep --sign - "${APP_DIR}"
 
 # --- Quitar atributos de cuarentena ---
 echo -e "${YELLOW}Quitando atributos de cuarentena...${NC}"
-xattr -cr "${APP_DIR}"
+find "${APP_DIR}" -xattr -print0 | xargs -0 xattr -c
 
 # --- Final ---
 echo -e "${GREEN}=== Compilación completada ===${NC}"

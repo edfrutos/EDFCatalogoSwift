@@ -316,6 +316,16 @@ class UserProfileViewModel: ObservableObject {
         self.profileImageUrl = user.profileImageUrl
     }
     
+    func updateUser(_ user: User) {
+        self.email = user.email
+        self.name = user.name
+        self.phone = user.phone ?? ""
+        self.company = user.company ?? ""
+        self.address = user.address ?? ""
+        self.occupation = user.occupation ?? ""
+        self.profileImageUrl = user.profileImageUrl
+    }
+    
     func selectProfileImage() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false
