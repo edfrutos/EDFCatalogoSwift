@@ -475,6 +475,33 @@ struct CatalogRowView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var dataToEdit: EditableRowData?
     @State private var isExpanded = false
+    
+    // Título de la fila: fecha + segundo campo (primera columna del usuario)
+    private var rowTitle: String {
+        var title = ""
+        
+        // Agregar fecha si existe
+        if let fecha = row.data["_fecha"], !fecha.isEmpty {
+            title = fecha
+        }
+        
+        // Obtener la segunda columna (primera del usuario) si existe
+        if columns.count >= 1,
+           let firstUserValue = row.data[columns[0]],
+           !firstUserValue.isEmpty {
+            if !title.isEmpty {
+                title += " - "
+            }
+            title += firstUserValue
+        }
+        
+        // Fallback: ID corto de la fila
+        if title.isEmpty {
+            return "Fila \(row.id.prefix(8))"
+        }
+        
+        return title
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -486,8 +513,9 @@ struct CatalogRowView: View {
                     HStack {
                         Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                             .foregroundColor(.blue)
-                        Text("Fila \(row.id.prefix(8))")
+                        Text(rowTitle)
                             .font(.headline)
+                            .lineLimit(1)
                     }
                 }
                 .buttonStyle(.plain)
@@ -543,6 +571,17 @@ struct CatalogRowView: View {
                     // Datos
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Datos de la fila").font(.headline)
+                        
+                        // Mostrar fecha primero si existe
+                        if let fecha = row.data["_fecha"], !fecha.isEmpty {
+                            HStack {
+                                Text("Fecha")
+                                    .fontWeight(.semibold)
+                                    .frame(width: 120, alignment: .leading)
+                                Text(fecha)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
 
                         ForEach(columns, id: \.self) { column in
                             HStack {
@@ -693,10 +732,16 @@ struct AddRowView: View {
     let onSave: ([String: String], RowFiles) -> Void
 
     @State private var data: [String: String] = [:]
+    @State private var selectedDate: Date = Date() // Fecha por defecto: hoy
     @State private var imageUrl: String = ""
     @State private var documentUrl: String = ""
     @State private var multimediaUrl: String = ""
     @State private var showValidationError = false
+    
+    // Arrays para múltiples archivos
+    @State private var additionalImages: [String] = []
+    @State private var additionalDocuments: [String] = []
+    @State private var additionalMultimedia: [String] = []
     
     // Estados para archivos seleccionados
     @State private var selectedImageFile: URL?
@@ -729,7 +774,8 @@ struct AddRowView: View {
     }
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
+            // Header - siempre visible
             HStack {
                 Text("Añadir Nueva Fila").font(.headline)
                 Spacer()
@@ -738,9 +784,31 @@ struct AddRowView: View {
                     .disabled(isUploading)
             }
             .padding()
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            Divider()
 
-            Form {
+            // Contenido con scroll
+            ScrollView {
+                Form {
                 Section(header: Text("Datos")) {
+                    // Campo de fecha (primera columna lógica)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Fecha")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        DatePicker(
+                            "",
+                            selection: $selectedDate,
+                            displayedComponents: [.date]
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                    }
+                    
+                    Divider()
+                    
+                    // Columnas del usuario
                     ForEach(columns, id: \.self) { column in
                         TextField(column, text: Binding(
                             get: { data[column] ?? "" },
@@ -752,33 +820,116 @@ struct AddRowView: View {
 
                 Section(header: Text("Archivos (opcional)")) {
                     // Imagen
-                    FileSelectionRow(
-                        title: "Imagen principal",
-                        selectedFile: $selectedImageFile,
-                        existingUrl: $imageUrl,
-                        isUploading: isUploadingImage,
-                        fileType: .image,
-                        onSelect: { selectFile(for: .image) }
-                    )
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Imagen principal")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        FileSelectionRow(
+                            title: "Subir desde archivo",
+                            selectedFile: $selectedImageFile,
+                            existingUrl: $imageUrl,
+                            isUploading: isUploadingImage,
+                            fileType: .image,
+                            onSelect: { selectFile(for: .image) }
+                        )
+                        
+                        Text("O ingresa una URL externa:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("https://ejemplo.com/imagen.jpg", text: $imageUrl)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isUploadingImage || selectedImageFile != nil)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    Divider()
                     
                     // Documento
-                    FileSelectionRow(
-                        title: "Documento principal",
-                        selectedFile: $selectedDocumentFile,
-                        existingUrl: $documentUrl,
-                        isUploading: isUploadingDocument,
-                        fileType: .document,
-                        onSelect: { selectFile(for: .document) }
-                    )
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Documento principal")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        FileSelectionRow(
+                            title: "Subir desde archivo",
+                            selectedFile: $selectedDocumentFile,
+                            existingUrl: $documentUrl,
+                            isUploading: isUploadingDocument,
+                            fileType: .document,
+                            onSelect: { selectFile(for: .document) }
+                        )
+                        
+                        Text("O ingresa una URL externa:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("https://ejemplo.com/documento.pdf", text: $documentUrl)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isUploadingDocument || selectedDocumentFile != nil)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    Divider()
                     
                     // Multimedia
-                    FileSelectionRow(
-                        title: "Multimedia principal",
-                        selectedFile: $selectedMultimediaFile,
-                        existingUrl: $multimediaUrl,
-                        isUploading: isUploadingMultimedia,
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Multimedia principal")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        FileSelectionRow(
+                            title: "Subir desde archivo",
+                            selectedFile: $selectedMultimediaFile,
+                            existingUrl: $multimediaUrl,
+                            isUploading: isUploadingMultimedia,
+                            fileType: .multimedia,
+                            onSelect: { selectFile(for: .multimedia) }
+                        )
+                        
+                        Text("O ingresa una URL externa:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("https://ejemplo.com/video.mp4", text: $multimediaUrl)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isUploadingMultimedia || selectedMultimediaFile != nil)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    // Múltiples imágenes adicionales
+                    MultipleFilesSection(
+                        title: "Imágenes adicionales",
+                        fileType: .image,
+                        urls: $additionalImages,
+                        onSelectFile: { selectFile(for: .image) },
+                        isUploading: isUploadingImage
+                    )
+                    
+                    Divider()
+                    
+                    // Múltiples documentos adicionales
+                    MultipleFilesSection(
+                        title: "Documentos adicionales",
+                        fileType: .document,
+                        urls: $additionalDocuments,
+                        onSelectFile: { selectFile(for: .document) },
+                        isUploading: isUploadingDocument
+                    )
+                    
+                    Divider()
+                    
+                    // Múltiples archivos multimedia adicionales
+                    MultipleFilesSection(
+                        title: "Archivos multimedia adicionales",
                         fileType: .multimedia,
-                        onSelect: { selectFile(for: .multimedia) }
+                        urls: $additionalMultimedia,
+                        onSelectFile: { selectFile(for: .multimedia) },
+                        isUploading: isUploadingMultimedia
                     )
                 }
                 
@@ -793,13 +944,17 @@ struct AddRowView: View {
                 if showValidationError {
                     Section {
                         Text("⚠️ Debes completar al menos un campo de datos")
-                            .foregroundColor(.red)
-                            .font(.caption)
+                        .foregroundColor(.red)
+                        .font(.caption)
                     }
                 }
+                }
+                .padding()
             }
-            .padding()
-
+            
+            Divider()
+            
+            // Footer - siempre visible
             HStack {
                 Spacer()
                 Button("Guardar") {
@@ -811,8 +966,9 @@ struct AddRowView: View {
                 .disabled(isUploading || !hasRequiredData)
             }
             .padding()
+            .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 500, height: 600)
+        .frame(minWidth: 550, idealWidth: 600, maxWidth: 700, minHeight: 500, idealHeight: 700, maxHeight: 900)
     }
     
     // MARK: - Funciones de selección y subida de archivos
@@ -896,6 +1052,13 @@ struct AddRowView: View {
         // Limpiar error previo
         uploadError = nil
         
+        // Agregar fecha al data
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+        dateFormatter.locale = Locale(identifier: "es_ES")
+        data["_fecha"] = dateFormatter.string(from: selectedDate)
+        
         // Subir archivos si están seleccionados
         var finalImageUrl = imageUrl
         var finalDocumentUrl = documentUrl
@@ -964,11 +1127,11 @@ struct AddRowView: View {
         // Crear objeto RowFiles con las URLs finales
         let files = RowFiles(
             image: finalImageUrl.isEmpty ? nil : finalImageUrl,
-            images: [],
+            images: additionalImages,
             document: finalDocumentUrl.isEmpty ? nil : finalDocumentUrl,
-            documents: [],
+            documents: additionalDocuments,
             multimedia: finalMultimediaUrl.isEmpty ? nil : finalMultimediaUrl,
-            multimediaFiles: []
+            multimediaFiles: additionalMultimedia
         )
         
         // Guardar los datos
@@ -981,9 +1144,15 @@ struct EditRowView: View {
     @Environment(\.presentationMode) var presentationMode
     @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var data: [String: String]
+    @State private var selectedDate: Date = Date()
     @State private var imageUrl: String
     @State private var documentUrl: String
     @State private var multimediaUrl: String
+    
+    // Arrays para múltiples archivos
+    @State private var additionalImages: [String] = []
+    @State private var additionalDocuments: [String] = []
+    @State private var additionalMultimedia: [String] = []
     
     // Estados para archivos seleccionados
     @State private var selectedImageFile: URL?
@@ -1004,6 +1173,15 @@ struct EditRowView: View {
     let columns: [String]
     let catalogId: String
     let onSave: ([String: String], RowFiles) -> Void
+    
+    // Helper para parsear fecha del string
+    static func parseFecha(_ fechaStr: String) -> Date? {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+        dateFormatter.locale = Locale(identifier: "es_ES")
+        return dateFormatter.date(from: fechaStr)
+    }
 
     init(data: [String: String], files: RowFiles, columns: [String], catalogId: String, onSave: @escaping ([String: String], RowFiles) -> Void) {
         print("🔍 DEBUG - EditRowView init:")
@@ -1014,16 +1192,29 @@ struct EditRowView: View {
         print("  files.multimedia: \(files.multimedia ?? "nil")")
 
         _data = State(initialValue: data)
+        
+        // Cargar fecha si existe, sino usar hoy
+        if let fechaStr = data["_fecha"],
+           let fecha = EditRowView.parseFecha(fechaStr) {
+            _selectedDate = State(initialValue: fecha)
+        } else {
+            _selectedDate = State(initialValue: Date())
+        }
+        
         _imageUrl = State(initialValue: files.image ?? "")
         _documentUrl = State(initialValue: files.document ?? "")
         _multimediaUrl = State(initialValue: files.multimedia ?? "")
+        _additionalImages = State(initialValue: files.images)
+        _additionalDocuments = State(initialValue: files.documents)
+        _additionalMultimedia = State(initialValue: files.multimediaFiles)
         self.columns = columns
         self.catalogId = catalogId
         self.onSave = onSave
     }
 
     var body: some View {
-        VStack {
+        VStack(spacing: 0) {
+            // Header - siempre visible
             HStack {
                 Text("Editar Fila").font(.headline)
                 Spacer()
@@ -1031,9 +1222,31 @@ struct EditRowView: View {
                     .buttonStyle(.plain)
             }
             .padding()
-
-            Form {
+            .background(Color(NSColor.windowBackgroundColor))
+            
+            Divider()
+            
+            // Contenido con scroll
+            ScrollView {
+                Form {
                 Section(header: Text("Datos")) {
+                    // Campo de fecha (primera columna lógica)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Fecha")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        DatePicker(
+                            "",
+                            selection: $selectedDate,
+                            displayedComponents: [.date]
+                        )
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                    }
+                    
+                    Divider()
+                    
+                    // Columnas del usuario
                     ForEach(columns, id: \.self) { column in
                         TextField(column, text: Binding(
                             get: { data[column] ?? "" },
@@ -1044,36 +1257,126 @@ struct EditRowView: View {
                 }
 
                 Section(header: Text("Archivos (opcional)")) {
-                    FileSelectionRow(
-                        title: "Imagen principal",
-                        selectedFile: $selectedImageFile,
-                        existingUrl: $imageUrl,
-                        isUploading: isUploadingImage,
+                    // Imagen
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Imagen principal")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        FileSelectionRow(
+                            title: "Subir desde archivo",
+                            selectedFile: $selectedImageFile,
+                            existingUrl: $imageUrl,
+                            isUploading: isUploadingImage,
+                            fileType: .image,
+                            onSelect: { selectFile(for: .image) }
+                        )
+                        
+                        Text("O ingresa una URL externa:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("https://ejemplo.com/imagen.jpg", text: $imageUrl)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isUploadingImage || selectedImageFile != nil)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    Divider()
+                    
+                    // Documento
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Documento principal")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        FileSelectionRow(
+                            title: "Subir desde archivo",
+                            selectedFile: $selectedDocumentFile,
+                            existingUrl: $documentUrl,
+                            isUploading: isUploadingDocument,
+                            fileType: .document,
+                            onSelect: { selectFile(for: .document) }
+                        )
+                        
+                        Text("O ingresa una URL externa:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("https://ejemplo.com/documento.pdf", text: $documentUrl)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isUploadingDocument || selectedDocumentFile != nil)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    Divider()
+                    
+                    // Multimedia
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Multimedia principal")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        
+                        FileSelectionRow(
+                            title: "Subir desde archivo",
+                            selectedFile: $selectedMultimediaFile,
+                            existingUrl: $multimediaUrl,
+                            isUploading: isUploadingMultimedia,
+                            fileType: .multimedia,
+                            onSelect: { selectFile(for: .multimedia) }
+                        )
+                        
+                        Text("O ingresa una URL externa:")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        TextField("https://ejemplo.com/video.mp4", text: $multimediaUrl)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(isUploadingMultimedia || selectedMultimediaFile != nil)
+                    }
+                    .padding(.vertical, 4)
+                    
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    // Múltiples imágenes adicionales
+                    MultipleFilesSection(
+                        title: "Imágenes adicionales",
                         fileType: .image,
-                        onSelect: { selectFile(for: .image) }
+                        urls: $additionalImages,
+                        onSelectFile: { selectFile(for: .image) },
+                        isUploading: isUploadingImage
                     )
                     
-                    FileSelectionRow(
-                        title: "Documento principal",
-                        selectedFile: $selectedDocumentFile,
-                        existingUrl: $documentUrl,
-                        isUploading: isUploadingDocument,
+                    Divider()
+                    
+                    // Múltiples documentos adicionales
+                    MultipleFilesSection(
+                        title: "Documentos adicionales",
                         fileType: .document,
-                        onSelect: { selectFile(for: .document) }
+                        urls: $additionalDocuments,
+                        onSelectFile: { selectFile(for: .document) },
+                        isUploading: isUploadingDocument
                     )
                     
-                    FileSelectionRow(
-                        title: "Multimedia principal",
-                        selectedFile: $selectedMultimediaFile,
-                        existingUrl: $multimediaUrl,
-                        isUploading: isUploadingMultimedia,
+                    Divider()
+                    
+                    // Múltiples archivos multimedia adicionales
+                    MultipleFilesSection(
+                        title: "Archivos multimedia adicionales",
                         fileType: .multimedia,
-                        onSelect: { selectFile(for: .multimedia) }
+                        urls: $additionalMultimedia,
+                        onSelectFile: { selectFile(for: .multimedia) },
+                        isUploading: isUploadingMultimedia
                     )
                 }
+                }
+                .padding()
             }
-            .padding()
-
+            
+            Divider()
+            
+            // Footer - siempre visible
             HStack {
                 Spacer()
                 Button(isUploading ? "Subiendo..." : "Guardar") {
@@ -1085,8 +1388,9 @@ struct EditRowView: View {
                 .disabled(isUploading)
             }
             .padding()
+            .background(Color(NSColor.windowBackgroundColor))
         }
-        .frame(width: 500, height: 600)
+        .frame(minWidth: 550, idealWidth: 600, maxWidth: 700, minHeight: 500, idealHeight: 700, maxHeight: 900)
     }
     
     // MARK: - Funciones de selección de archivos
@@ -1164,6 +1468,13 @@ struct EditRowView: View {
         
         print("👤 Usuario ID: \(userId)")
         
+        // Actualizar fecha en data
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .medium
+        dateFormatter.timeStyle = .none
+        dateFormatter.locale = Locale(identifier: "es_ES")
+        data["_fecha"] = dateFormatter.string(from: selectedDate)
+        
         var finalImageUrl = imageUrl
         var finalDocumentUrl = documentUrl
         var finalMultimediaUrl = multimediaUrl
@@ -1234,11 +1545,11 @@ struct EditRowView: View {
         // Crear objeto RowFiles con las URLs finales
         let files = RowFiles(
             image: finalImageUrl.isEmpty ? nil : finalImageUrl,
-            images: [],
+            images: additionalImages,
             document: finalDocumentUrl.isEmpty ? nil : finalDocumentUrl,
-            documents: [],
+            documents: additionalDocuments,
             multimedia: finalMultimediaUrl.isEmpty ? nil : finalMultimediaUrl,
-            multimediaFiles: []
+            multimediaFiles: additionalMultimedia
         )
         
         print("💾 Guardando fila en MongoDB...")
@@ -1259,7 +1570,7 @@ struct FileViewerView: View {
     @State private var isLoadingPresigned = false
 
     // Deducción local del "tipo" por extensión — evita ambigüedad con FileType
-    private enum LocalFileKind { case image, pdf, video, other }
+    private enum LocalFileKind { case image, pdf, video, text, other }
 
     private var kind: LocalFileKind {
         let lower = fileName.lowercased()
@@ -1269,6 +1580,8 @@ struct FileViewerView: View {
             return .pdf
         } else if lower.hasSuffix(".mp4") || lower.hasSuffix(".mov") || lower.hasSuffix(".m4v") || lower.hasSuffix(".avi") {
             return .video
+        } else if lower.hasSuffix(".txt") || lower.hasSuffix(".md") || lower.hasSuffix(".rtf") || lower.hasSuffix(".json") || lower.hasSuffix(".xml") || lower.hasSuffix(".csv") || lower.hasSuffix(".html") || lower.hasSuffix(".htm") {
+            return .text
         } else {
             return .other
         }
@@ -1381,10 +1694,13 @@ struct FileViewerView: View {
                                 if let u = resolvedURL {
                                     VStack(spacing: 10) {
                                         PDFKitView(url: u)
-                                            .frame(height: 500)
-                                        Text("📝 Vista previa del PDF")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                                            .frame(height: 400)
+                                        Button {
+                                            openPDFViewer(url: u)
+                                        } label: {
+                                            Label("Abrir en visor PDF completo", systemImage: "doc.richtext")
+                                        }
+                                        .buttonStyle(.borderedProminent)
                                     }
                                 } else {
                                     VStack {
@@ -1416,6 +1732,24 @@ struct FileViewerView: View {
                                             .foregroundColor(.red)
                                     }
                                     .frame(minHeight: 200)
+                                }
+                            
+                            case .text:
+                                if let u = resolvedURL {
+                                    VStack(spacing: 10) {
+                                        Text("📄 Documento de texto")
+                                            .font(.headline)
+                                        Button {
+                                            openTextViewer(url: u)
+                                        } label: {
+                                            Label("Abrir en visor de texto", systemImage: "doc.text")
+                                        }
+                                        .buttonStyle(.borderedProminent)
+                                    }
+                                    .frame(minHeight: 200)
+                                } else {
+                                    Text("URL inválida")
+                                        .frame(minHeight: 200)
                                 }
                             
                             case .other:
@@ -1524,6 +1858,24 @@ struct FileViewerView: View {
         } else {
             print("❌ URL inválida para abrir: \(url)")
         }
+    }
+    
+    private func openPDFViewer(url: URL) {
+        let pdfViewer = PDFViewerView(url: url, fileName: fileName)
+        let hostingController = NSHostingController(rootView: pdfViewer)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Visor PDF - \(fileName)"
+        window.setContentSize(NSSize(width: 900, height: 700))
+        window.makeKeyAndOrderFront(nil)
+    }
+    
+    private func openTextViewer(url: URL) {
+        let textViewer = TextDocumentView(url: url, fileName: fileName)
+        let hostingController = NSHostingController(rootView: textViewer)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Visor de Texto - \(fileName)"
+        window.setContentSize(NSSize(width: 800, height: 600))
+        window.makeKeyAndOrderFront(nil)
     }
 }
 

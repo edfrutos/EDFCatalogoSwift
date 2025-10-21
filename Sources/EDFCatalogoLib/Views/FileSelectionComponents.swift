@@ -115,10 +115,28 @@ struct FileSelectorModifier: ViewModifier {
             panel.message = "Selecciona una imagen (máximo 20 MB)"
             
         case .pdf, .document:
-            var docTypes: [UTType] = [.pdf, .plainText, .rtf, .json]
-            if let mdType = UTType(filenameExtension: "md") {
-                docTypes.append(mdType)
-            }
+            var docTypes: [UTType] = [
+                .pdf,
+                .plainText,  // .txt
+                .rtf,
+                .json,
+                .commaSeparatedText,  // .csv
+                .xml
+            ]
+            
+            // Documentos de Microsoft Office
+            if let docType = UTType(filenameExtension: "doc") { docTypes.append(docType) }
+            if let docxType = UTType(filenameExtension: "docx") { docTypes.append(docxType) }
+            if let xlsType = UTType(filenameExtension: "xls") { docTypes.append(xlsType) }
+            if let xlsxType = UTType(filenameExtension: "xlsx") { docTypes.append(xlsxType) }
+            if let pptType = UTType(filenameExtension: "ppt") { docTypes.append(pptType) }
+            if let pptxType = UTType(filenameExtension: "pptx") { docTypes.append(pptxType) }
+            
+            // Otros formatos de texto
+            if let mdType = UTType(filenameExtension: "md") { docTypes.append(mdType) }
+            if let htmlType = UTType(filenameExtension: "html") { docTypes.append(htmlType) }
+            if let htmType = UTType(filenameExtension: "htm") { docTypes.append(htmType) }
+            
             panel.allowedContentTypes = docTypes
             panel.message = "Selecciona un documento (máximo 50 MB)"
             
