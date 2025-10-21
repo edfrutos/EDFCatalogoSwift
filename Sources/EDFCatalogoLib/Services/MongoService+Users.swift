@@ -415,4 +415,195 @@ extension MongoService {
         _ = try await users.updateOne(filter: filter, update: update)
         print("✅ Token limpiado correctamente")
     }
+    
+    // MARK: - Métodos administrativos
+    
+    /// Lista todos los usuarios (solo para administradores)
+    public func listAllUsers() async throws -> [User] {
+        print("📋 Obteniendo lista completa de usuarios")
+        
+        let users = try await usersCollection()
+        let cursor = try await users.find([:]) // Query vacío para obtener todos
+        let userDocs = try await cursor.toArray()
+        
+        var usersList: [User] = []
+        
+        for userDoc in userDocs {
+            let userId = userDoc["_id"]?.objectIDValue ?? BSONObjectID()
+            let email = userDoc["Email"]?.stringValue ?? ""
+            let username = userDoc["Username"]?.stringValue ?? userDoc["Email"]?.stringValue?.components(separatedBy: "@").first ?? "usuario"
+            let name = userDoc["Name"]?.stringValue ?? "Usuario"
+            
+            // Convertir Role a isAdmin
+            let role = userDoc["Role"]?.stringValue ?? ""
+            let isAdmin = (role.lowercased() == "admin")
+            
+            // Campos opcionales
+            let fullName = userDoc["FullName"]?.stringValue
+            let phone = userDoc["Phone"]?.stringValue
+            let company = userDoc["Company"]?.stringValue
+            let address = userDoc["Address"]?.stringValue
+            let occupation = userDoc["Occupation"]?.stringValue
+            let profileImageUrl = userDoc["ProfileImageUrl"]?.stringValue
+            let isActive = userDoc["IsActive"]?.boolValue
+            let createdAt = userDoc["CreatedAt"]?.dateValue
+            let lastLoginAt = userDoc["LastLoginAt"]?.dateValue
+            
+            let user = User(
+                _id: userId,
+                email: email,
+                username: username,
+                name: name,
+                isAdmin: isAdmin,
+                fullName: fullName,
+                phone: phone,
+                company: company,
+                address: address,
+                occupation: occupation,
+                profileImageUrl: profileImageUrl,
+                isActive: isActive,
+                createdAt: createdAt,
+                lastLoginAt: lastLoginAt
+            )
+            
+            usersList.append(user)
+        }
+        
+        print("✅ Obtenidos \(usersList.count) usuarios")
+        return usersList
+    }
+    
+    /// Actualiza el rol de un usuario (admin/user)
+    public func updateUserRole(userId: String, isAdmin: Bool) async throws {
+        print("👑 Actualizando rol de usuario: \(userId) - Admin: \(isAdmin)")
+        
+        let users = try await usersCollection()
+        
+        guard let objectId = try? BSONObjectID(userId) else {
+            throw NSError(domain: "MongoService", code: 400, userInfo: [NSLocalizedDescriptionKey: "ID de usuario inválido"])
+        }
+        
+        let filter: BSONDocument = ["_id": .objectID(objectId)]
+        let role = isAdmin ? "admin" : "user"
+        let update: BSONDocument = ["$set": ["Role": .string(role)]]
+        
+        let result = try await users.updateOne(filter: filter, update: update)
+        
+        if let matchedCount = result?.matchedCount, matchedCount > 0 {
+            print("✅ Rol actualizado correctamente")
+        } else {
+            print("⚠️ Usuario no encontrado")
+            throw NSError(domain: "MongoService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Usuario no encontrado"])
+        }
+    }
+    
+    /// Actualiza el estado activo de un usuario
+    public func updateUserActiveStatus(userId: String, isActive: Bool) async throws {
+        print("🔄 Actualizando estado de usuario: \(userId) - Activo: \(isActive)")
+        
+        let users = try await usersCollection()
+        
+        guard let objectId = try? BSONObjectID(userId) else {
+            throw NSError(domain: "MongoService", code: 400, userInfo: [NSLocalizedDescriptionKey: "ID de usuario inválido"])
+        }
+        
+        let filter: BSONDocument = ["_id": .objectID(objectId)]
+        let update: BSONDocument = ["$set": ["IsActive": .bool(isActive)]]
+        
+        let result = try await users.updateOne(filter: filter, update: update)
+        
+        if let matchedCount = result?.matchedCount, matchedCount > 0 {
+            print("✅ Estado actualizado correctamente")
+        } else {
+            print("⚠️ Usuario no encontrado")
+            throw NSError(domain: "MongoService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Usuario no encontrado"])
+        }
+    }
+    
+    /// Actualiza información completa de un usuario (para administradores)
+    public func updateUserByAdmin(
+        userId: String,
+        email: String,
+        username: String,
+        name: String,
+        fullName: String?,
+        phone: String?,
+        company: String?,
+        address: String?,
+        occupation: String?,
+        profileImageUrl: String?,
+        isAdmin: Bool,
+        isActive: Bool
+    ) async throws {
+        print("📝 Actualizando usuario completo: \(userId)")
+        
+        let users = try await usersCollection()
+        
+        guard let objectId = try? BSONObjectID(userId) else {
+            throw NSError(domain: "MongoService", code: 400, userInfo: [NSLocalizedDescriptionKey: "ID de usuario inválido"])
+        }
+        
+        let filter: BSONDocument = ["_id": .objectID(objectId)]
+        
+        var updateDoc: BSONDocument = [
+            "Email": .string(email),
+            "Username": .string(username),
+            "Name": .string(name),
+            "Role": .string(isAdmin ? "admin" : "user"),
+            "IsActive": .bool(isActive)
+        ]
+        
+        // Agregar campos opcionales solo si no son nil
+        if let fullName = fullName, !fullName.isEmpty {
+            updateDoc["FullName"] = .string(fullName)
+        }
+        if let phone = phone, !phone.isEmpty {
+            updateDoc["Phone"] = .string(phone)
+        }
+        if let company = company, !company.isEmpty {
+            updateDoc["Company"] = .string(company)
+        }
+        if let address = address, !address.isEmpty {
+            updateDoc["Address"] = .string(address)
+        }
+        if let occupation = occupation, !occupation.isEmpty {
+            updateDoc["Occupation"] = .string(occupation)
+        }
+        if let profileImageUrl = profileImageUrl, !profileImageUrl.isEmpty {
+            updateDoc["ProfileImageUrl"] = .string(profileImageUrl)
+        }
+        
+        let update: BSONDocument = ["$set": .document(updateDoc)]
+        
+        let result = try await users.updateOne(filter: filter, update: update)
+        
+        if let matchedCount = result?.matchedCount, matchedCount > 0 {
+            print("✅ Usuario actualizado correctamente")
+        } else {
+            print("⚠️ Usuario no encontrado")
+            throw NSError(domain: "MongoService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Usuario no encontrado"])
+        }
+    }
+    
+    /// Elimina un usuario por completo (solo para administradores)
+    public func deleteUser(userId: String) async throws {
+        print("🗑️ Eliminando usuario: \(userId)")
+        
+        let users = try await usersCollection()
+        
+        guard let objectId = try? BSONObjectID(userId) else {
+            throw NSError(domain: "MongoService", code: 400, userInfo: [NSLocalizedDescriptionKey: "ID de usuario inválido"])
+        }
+        
+        let filter: BSONDocument = ["_id": .objectID(objectId)]
+        
+        let result = try await users.deleteOne(filter)
+        
+        if let deletedCount = result?.deletedCount, deletedCount > 0 {
+            print("✅ Usuario eliminado correctamente")
+        } else {
+            print("⚠️ Usuario no encontrado")
+            throw NSError(domain: "MongoService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Usuario no encontrado"])
+        }
+    }
 }
