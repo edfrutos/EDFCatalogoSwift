@@ -78,6 +78,8 @@ public struct AdminPanelView: View {
                     switch selectedTab {
                     case .users:
                         AdminUsersListView(viewModel: viewModel)
+                    case .catalogs:
+                        AdminCatalogsListView()
                     case .statistics:
                         AdminStatisticsView(currentUser: currentUser)
                     case .settings:
@@ -93,6 +95,7 @@ public struct AdminPanelView: View {
 
 public enum AdminTab: CaseIterable {
     case users
+    case catalogs
     case statistics
     case settings
     
@@ -100,6 +103,8 @@ public enum AdminTab: CaseIterable {
         switch self {
         case .users:
             return "Usuarios"
+        case .catalogs:
+            return "Catálogos"
         case .statistics:
             return "Estadísticas"
         case .settings:
@@ -111,6 +116,8 @@ public enum AdminTab: CaseIterable {
         switch self {
         case .users:
             return "person.3.fill"
+        case .catalogs:
+            return "books.vertical.fill"
         case .statistics:
             return "chart.bar.fill"
         case .settings:
