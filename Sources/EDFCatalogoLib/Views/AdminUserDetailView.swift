@@ -6,29 +6,28 @@ public struct AdminUserDetailView: View {
     
     let user: User
     
-    @State private var editingEmail: String = \"\"
-    @State private var editingUsername: String = \"\"
-    @State private var editingName: String = \"\"
-    @State private var editingFullName: String = \"\"
-    @State private var editingPhone: String = \"\"
-    @State private var editingCompany: String = \"\"
-    @State private var editingAddress: String = \"\"
-    @State private var editingOccupation: String = \"\"
+    @State private var editingEmail: String = ""
+    @State private var editingUsername: String = ""
+    @State private var editingName: String = ""
+    @State private var editingFullName: String = ""
+    @State private var editingPhone: String = ""
+    @State private var editingCompany: String = ""
+    @State private var editingAddress: String = ""
+    @State private var editingOccupation: String = ""
     @State private var editingIsAdmin: Bool = false
     @State private var editingIsActive: Bool = true
     
     @State private var isEditing = false
-    @State private var showCatalogsView = false
     
     var hasChanges: Bool {
         editingEmail != user.email ||
         editingUsername != user.username ||
         editingName != user.name ||
-        editingFullName != (user.fullName ?? \"\") ||
-        editingPhone != (user.phone ?? \"\") ||
-        editingCompany != (user.company ?? \"\") ||
-        editingAddress != (user.address ?? \"\") ||
-        editingOccupation != (user.occupation ?? \"\") ||
+        editingFullName != (user.fullName ?? "") ||
+        editingPhone != (user.phone ?? "") ||
+        editingCompany != (user.company ?? "") ||
+        editingAddress != (user.address ?? "") ||
+        editingOccupation != (user.occupation ?? "") ||
         editingIsAdmin != user.isAdmin ||
         editingIsActive != (user.isActive ?? true)
     }
@@ -39,7 +38,7 @@ public struct AdminUserDetailView: View {
                 // Header
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(\"Detalles del Usuario\")
+                        Text("Detalles del Usuario")
                             .font(.title2)
                             .fontWeight(.bold)
                         Text(user.email)
@@ -48,13 +47,13 @@ public struct AdminUserDetailView: View {
                     }
                     Spacer()
                     Button(action: { dismiss() }) {
-                        Image(systemName: \"xmark.circle.fill\")
+                        Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.gray)
                     }
                 }
                 .padding()
-                .background(Color(.systemBackground))
-                .border(Color(.systemGray4), width: 1)
+                .background(Color.white)
+                .border(Color.gray.opacity(0.3), width: 1)
                 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -69,9 +68,9 @@ public struct AdminUserDetailView: View {
                             }
                         
                         // Tabs
-                        Picker(\"Tab\", selection: \$isEditing) {
-                            Text(\"Ver\").tag(false)
-                            Text(\"Editar\").tag(true)
+                        Picker("Tab", selection: $isEditing) {
+                            Text("Ver").tag(false)
+                            Text("Editar").tag(true)
                         }
                         .pickerStyle(.segmented)
                         .padding()
@@ -81,118 +80,116 @@ public struct AdminUserDetailView: View {
                             VStack(spacing: 16) {
                                 // Rol
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Rol\", systemImage: \"crown.fill\")
+                                    Label("Rol", systemImage: "crown.fill")
                                         .fontWeight(.semibold)
                                     
-                                    Picker(\"Rol\", selection: \$editingIsAdmin) {
-                                        Text(\"Usuario Normal\").tag(false)
-                                        Text(\"Administrador\").tag(true)
+                                    Picker("Rol", selection: $editingIsAdmin) {
+                                        Text("Usuario Normal").tag(false)
+                                        Text("Administrador").tag(true)
                                     }
                                     .pickerStyle(.segmented)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Estado Activo
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Estado\", systemImage: \"circle.fill\")
+                                    Label("Estado", systemImage: "circle.fill")
                                         .fontWeight(.semibold)
                                     
-                                    Toggle(\"Usuario Activo\", isOn: \$editingIsActive)
+                                    Toggle("Usuario Activo", isOn: $editingIsActive)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Email
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Email\", systemImage: \"envelope.fill\")
+                                    Label("Email", systemImage: "envelope.fill")
                                         .fontWeight(.semibold)
-                                    TextField(\"Email\", text: \$editingEmail)
+                                    TextField("Email", text: $editingEmail)
                                         .textFieldStyle(.roundedBorder)
-                                        .keyboardType(.emailAddress)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Username
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Usuario\", systemImage: \"person.fill\")
+                                    Label("Usuario", systemImage: "person.fill")
                                         .fontWeight(.semibold)
-                                    TextField(\"Usuario\", text: \$editingUsername)
+                                    TextField("Usuario", text: $editingUsername)
                                         .textFieldStyle(.roundedBorder)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Nombre para mostrar
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Nombre para mostrar\", systemImage: \"text.justify\")
+                                    Label("Nombre para mostrar", systemImage: "text.justify")
                                         .fontWeight(.semibold)
-                                    TextField(\"Nombre\", text: \$editingName)
+                                    TextField("Nombre", text: $editingName)
                                         .textFieldStyle(.roundedBorder)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Nombre completo
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Nombre completo\", systemImage: \"person.text.rectangle\")
+                                    Label("Nombre completo", systemImage: "person.text.rectangle")
                                         .fontWeight(.semibold)
-                                    TextField(\"Nombre y apellidos\", text: \$editingFullName)
+                                    TextField("Nombre y apellidos", text: $editingFullName)
                                         .textFieldStyle(.roundedBorder)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Teléfono
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Teléfono\", systemImage: \"phone.fill\")
+                                    Label("Teléfono", systemImage: "phone.fill")
                                         .fontWeight(.semibold)
-                                    TextField(\"Teléfono\", text: \$editingPhone)
+                                    TextField("Teléfono", text: $editingPhone)
                                         .textFieldStyle(.roundedBorder)
-                                        .keyboardType(.phonePad)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Empresa
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Empresa\", systemImage: \"building.2.fill\")
+                                    Label("Empresa", systemImage: "building.2.fill")
                                         .fontWeight(.semibold)
-                                    TextField(\"Empresa\", text: \$editingCompany)
+                                    TextField("Empresa", text: $editingCompany)
                                         .textFieldStyle(.roundedBorder)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Dirección
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Dirección\", systemImage: \"location.fill\")
+                                    Label("Dirección", systemImage: "location.fill")
                                         .fontWeight(.semibold)
-                                    TextField(\"Dirección\", text: \$editingAddress)
+                                    TextField("Dirección", text: $editingAddress)
                                         .textFieldStyle(.roundedBorder)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Profesión
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Label(\"Profesión\", systemImage: \"briefcase.fill\")
+                                    Label("Profesión", systemImage: "briefcase.fill")
                                         .fontWeight(.semibold)
-                                    TextField(\"Profesión\", text: \$editingOccupation)
+                                    TextField("Profesión", text: $editingOccupation)
                                         .textFieldStyle(.roundedBorder)
                                 }
                                 .padding()
-                                .background(Color(.systemGray6))
+                                .background(Color.gray.opacity(0.1))
                                 .cornerRadius(8)
                                 
                                 // Buttons
@@ -200,7 +197,7 @@ public struct AdminUserDetailView: View {
                                     Button(action: {
                                         initializeEditingFields()
                                     }) {
-                                        Text(\"Cancelar\")
+                                        Text("Cancelar")
                                             .frame(maxWidth: .infinity)
                                     }
                                     .buttonStyle(.bordered)
@@ -208,7 +205,7 @@ public struct AdminUserDetailView: View {
                                     Button(action: {
                                         saveChanges()
                                     }) {
-                                        Text(\"Guardar\")
+                                        Text("Guardar")
                                             .frame(maxWidth: .infinity)
                                     }
                                     .buttonStyle(.borderedProminent)
@@ -219,36 +216,36 @@ public struct AdminUserDetailView: View {
                         } else {
                             // View Mode
                             VStack(spacing: 16) {
-                                InfoRowView(label: \"Rol\", value: user.isAdmin ? \"👑 Administrador\" : \"👤 Usuario Normal\")
-                                InfoRowView(label: \"Estado\", value: (user.isActive ?? true) ? \"✅ Activo\" : \"❌ Inactivo\")
+                                InfoRowView(label: "Rol", value: user.isAdmin ? "👑 Administrador" : "👤 Usuario Normal")
+                                InfoRowView(label: "Estado", value: (user.isActive ?? true) ? "✅ Activo" : "❌ Inactivo")
                                 Divider()
-                                InfoRowView(label: \"Email\", value: user.email)
-                                InfoRowView(label: \"Usuario\", value: user.username)
-                                InfoRowView(label: \"Nombre\", value: user.name)
+                                InfoRowView(label: "Email", value: user.email)
+                                InfoRowView(label: "Usuario", value: user.username)
+                                InfoRowView(label: "Nombre", value: user.name)
                                 if let fullName = user.fullName, !fullName.isEmpty {
-                                    InfoRowView(label: \"Nombre Completo\", value: fullName)
+                                    InfoRowView(label: "Nombre Completo", value: fullName)
                                 }
                                 if let phone = user.phone, !phone.isEmpty {
-                                    InfoRowView(label: \"Teléfono\", value: phone)
+                                    InfoRowView(label: "Teléfono", value: phone)
                                 }
                                 if let company = user.company, !company.isEmpty {
-                                    InfoRowView(label: \"Empresa\", value: company)
+                                    InfoRowView(label: "Empresa", value: company)
                                 }
                                 if let address = user.address, !address.isEmpty {
-                                    InfoRowView(label: \"Dirección\", value: address)
+                                    InfoRowView(label: "Dirección", value: address)
                                 }
                                 if let occupation = user.occupation, !occupation.isEmpty {
-                                    InfoRowView(label: \"Profesión\", value: occupation)
+                                    InfoRowView(label: "Profesión", value: occupation)
                                 }
                                 if let createdAt = user.createdAt {
-                                    InfoRowView(label: \"Creado el\", value: createdAt.formatted(date: .numeric, time: .shortened))
+                                    InfoRowView(label: "Creado el", value: createdAt.formatted(date: .numeric, time: .shortened))
                                 }
                                 
                                 Divider()
                                 
                                 // Catálogos Button
                                 NavigationLink(destination: AdminUserCatalogsView(userId: user.id)) {
-                                    Label(\"Ver Catálogos del Usuario\", systemImage: \"books.vertical.fill\")
+                                    Label("Ver Catálogos del Usuario", systemImage: "books.vertical.fill")
                                         .frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(.bordered)
@@ -268,11 +265,11 @@ public struct AdminUserDetailView: View {
         editingEmail = user.email
         editingUsername = user.username
         editingName = user.name
-        editingFullName = user.fullName ?? \"\"
-        editingPhone = user.phone ?? \"\"
-        editingCompany = user.company ?? \"\"
-        editingAddress = user.address ?? \"\"
-        editingOccupation = user.occupation ?? \"\"
+        editingFullName = user.fullName ?? ""
+        editingPhone = user.phone ?? ""
+        editingCompany = user.company ?? ""
+        editingAddress = user.address ?? ""
+        editingOccupation = user.occupation ?? ""
         editingIsAdmin = user.isAdmin
         editingIsActive = user.isActive ?? true
     }
@@ -313,19 +310,7 @@ struct InfoRowView: View {
                 .font(.body)
         }
         .padding()
-        .background(Color(.systemGray6))
+        .background(Color.gray.opacity(0.1))
         .cornerRadius(8)
     }
-}
-
-#Preview {
-    let mockUser = User(
-        _id: BSONObjectID(),
-        email: \"usuario@example.com\",
-        username: \"usuario\",
-        name: \"Usuario Demo\",
-        isAdmin: false
-    )
-    let mockViewModel = AdminViewModel(mongoService: MockMongoService())
-    AdminUserDetailView(viewModel: mockViewModel, user: mockUser)
 }

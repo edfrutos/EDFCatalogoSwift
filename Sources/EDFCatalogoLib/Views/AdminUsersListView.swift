@@ -2,7 +2,7 @@ import SwiftUI
 
 public struct AdminUsersListView: View {
     @ObservedObject var viewModel: AdminViewModel
-    @State private var searchText = \"\"
+    @State private var searchText = ""
     @State private var showDetails = false
     
     var filteredUsers: [User] {
@@ -22,10 +22,10 @@ public struct AdminUsersListView: View {
             VStack(spacing: 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(\"Gestión de Usuarios\")
+                        Text("Gestión de Usuarios")
                             .font(.title2)
                             .fontWeight(.bold)
-                        Text(\"Total: \\(viewModel.users.count) usuarios\")
+                        Text("Total: \(viewModel.users.count) usuarios")
                             .font(.caption)
                             .foregroundColor(.gray)
                     }
@@ -35,7 +35,7 @@ public struct AdminUsersListView: View {
                             await viewModel.loadUsers()
                         }
                     }) {
-                        Image(systemName: \"arrow.clockwise\")
+                        Image(systemName: "arrow.clockwise")
                             .foregroundColor(.blue)
                     }
                     .disabled(viewModel.isLoading)
@@ -43,32 +43,32 @@ public struct AdminUsersListView: View {
                 
                 // Search Bar
                 HStack {
-                    Image(systemName: \"magnifyingglass\")
+                    Image(systemName: "magnifyingglass")
                         .foregroundColor(.gray)
-                    TextField(\"Buscar por email, nombre o usuario\", text: \$searchText)
+                    TextField("Buscar por email, nombre o usuario", text: $searchText)
                         .textFieldStyle(.roundedBorder)
                     if !searchText.isEmpty {
-                        Button(action: { searchText = \"\" }) {
-                            Image(systemName: \"xmark.circle.fill\")
+                        Button(action: { searchText = "" }) {
+                            Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(.gray)
                         }
                     }
                 }
             }
             .padding()
-            .background(Color(.systemBackground))
+            .background(Color.white)
             
             // Messages
             if let error = viewModel.errorMessage {
                 HStack {
-                    Image(systemName: \"exclamationmark.circle.fill\")
+                    Image(systemName: "exclamationmark.circle.fill")
                         .foregroundColor(.red)
                     Text(error)
                         .font(.caption)
                         .foregroundColor(.red)
                     Spacer()
                     Button(action: { viewModel.errorMessage = nil }) {
-                        Image(systemName: \"xmark\")
+                        Image(systemName: "xmark")
                             .foregroundColor(.red)
                     }
                 }
@@ -81,14 +81,14 @@ public struct AdminUsersListView: View {
             
             if let success = viewModel.successMessage {
                 HStack {
-                    Image(systemName: \"checkmark.circle.fill\")
+                    Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                     Text(success)
                         .font(.caption)
                         .foregroundColor(.green)
                     Spacer()
                     Button(action: { viewModel.successMessage = nil }) {
-                        Image(systemName: \"xmark\")
+                        Image(systemName: "xmark")
                             .foregroundColor(.green)
                     }
                 }
@@ -103,16 +103,16 @@ public struct AdminUsersListView: View {
             if viewModel.isLoading {
                 VStack(spacing: 20) {
                     ProgressView()
-                    Text(\"Cargando usuarios...\")
+                    Text("Cargando usuarios...")
                         .foregroundColor(.gray)
                 }
                 .frame(maxHeight: .infinity)
             } else if filteredUsers.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: \"person.slash\")
+                    Image(systemName: "person.slash")
                         .font(.system(size: 48))
                         .foregroundColor(.gray)
-                    Text(searchText.isEmpty ? \"No hay usuarios\" : \"No se encontraron resultados\")
+                    Text(searchText.isEmpty ? "No hay usuarios" : "No se encontraron resultados")
                         .foregroundColor(.gray)
                 }
                 .frame(maxHeight: .infinity)
@@ -146,16 +146,16 @@ public struct AdminUsersListView: View {
                 }
             }
         }
-        .sheet(isPresented: \$showDetails) {
+        .sheet(isPresented: $showDetails) {
             if let user = viewModel.selectedUser {
                 AdminUserDetailView(viewModel: viewModel, user: user)
             }
         }
-        .alert(\"Eliminar Usuario\", isPresented: \$viewModel.showDeleteConfirmation) {
-            Button(\"Cancelar\", role: .cancel) {
+        .alert("Eliminar Usuario", isPresented: $viewModel.showDeleteConfirmation) {
+            Button("Cancelar", role: .cancel) {
                 viewModel.closeDeleteConfirmation()
             }
-            Button(\"Eliminar\", role: .destructive) {
+            Button("Eliminar", role: .destructive) {
                 if let user = viewModel.userToDelete {
                     Task {
                         await viewModel.deleteUser(user)
@@ -164,7 +164,7 @@ public struct AdminUsersListView: View {
             }
         } message: {
             if let user = viewModel.userToDelete {
-                Text(\"¿Deseas eliminar a \\(user.email)? Esta acción no se puede deshacer.\")
+                Text("¿Deseas eliminar a \(user.email)? Esta acción no se puede deshacer.")
             }
         }
         .task {
@@ -202,7 +202,7 @@ struct UserListItemView: View {
                             .font(.subheadline)
                             .fontWeight(.semibold)
                         if user.isAdmin {
-                            Label(\"Admin\", systemImage: \"crown.fill\")
+                            Label("Admin", systemImage: "crown.fill")
                                 .font(.caption2)
                                 .foregroundColor(.orange)
                                 .padding(.horizontal, 6)
@@ -211,7 +211,7 @@ struct UserListItemView: View {
                                 .cornerRadius(4)
                         }
                         if !(user.isActive ?? true) {
-                            Label(\"Inactivo\", systemImage: \"circle.slash\")
+                            Label("Inactivo", systemImage: "circle.slash")
                                 .font(.caption2)
                                 .foregroundColor(.red)
                                 .padding(.horizontal, 6)
@@ -231,26 +231,26 @@ struct UserListItemView: View {
                 // Actions Menu
                 Menu {
                     Button(action: onSelect) {
-                        Label(\"Ver Detalles\", systemImage: \"eye\")
+                        Label("Ver Detalles", systemImage: "eye")
                     }
                     
                     Divider()
                     
                     Button(action: onToggleRole) {
-                        Label(user.isAdmin ? \"Hacer Usuario\" : \"Hacer Admin\", systemImage: user.isAdmin ? \"person\" : \"crown.fill\")
+                        Label(user.isAdmin ? "Hacer Usuario" : "Hacer Admin", systemImage: user.isAdmin ? "person" : "crown.fill")
                     }
                     
                     Button(action: onToggleActive) {
-                        Label(user.isActive ?? true ? \"Desactivar\" : \"Activar\", systemImage: user.isActive ?? true ? \"circle.slash\" : \"circle.fill\")
+                        Label(user.isActive ?? true ? "Desactivar" : "Activar", systemImage: user.isActive ?? true ? "circle.slash" : "circle.fill")
                     }
                     
                     Divider()
                     
                     Button(role: .destructive, action: onDelete) {
-                        Label(\"Eliminar\", systemImage: \"trash\")
+                        Label("Eliminar", systemImage: "trash")
                     }
                 } label: {
-                    Image(systemName: \"ellipsis.circle\")
+                    Image(systemName: "ellipsis.circle")
                         .foregroundColor(.blue)
                 }
             }
@@ -258,13 +258,8 @@ struct UserListItemView: View {
             .contentShape(Rectangle())
             .onTapGesture(perform: onSelect)
         }
-        .background(Color(.systemBackground))
-        .border(Color(.systemGray4), width: 1)
+        .background(Color.white)
+        .border(Color.gray.opacity(0.3), width: 1)
         .cornerRadius(8)
     }
-}
-
-#Preview {
-    let mockViewModel = AdminViewModel(mongoService: MockMongoService())
-    AdminUsersListView(viewModel: mockViewModel)
 }

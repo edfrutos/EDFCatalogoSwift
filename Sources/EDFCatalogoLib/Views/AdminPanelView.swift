@@ -1,7 +1,7 @@
 import SwiftUI
 
 public struct AdminPanelView: View {
-    @Environment(\\.dismiss) var dismiss
+    @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: AdminViewModel
     let currentUser: User
     
@@ -11,20 +11,20 @@ public struct AdminPanelView: View {
         if !currentUser.isAdmin {
             // Acceso denegado
             VStack(spacing: 16) {
-                Image(systemName: \"hand.raised.fill\")
+                Image(systemName: "hand.raised.fill")
                     .font(.system(size: 48))
                     .foregroundColor(.red)
                 
-                Text(\"Acceso Denegado\")
+                Text("Acceso Denegado")
                     .font(.title2)
                     .fontWeight(.bold)
                 
-                Text(\"No tienes permisos para acceder al panel de administración. Solo los administradores pueden acceder a esta sección.\")
+                Text("No tienes permisos para acceder al panel de administración. Solo los administradores pueden acceder a esta sección.")
                     .multilineTextAlignment(.center)
                     .foregroundColor(.gray)
                 
                 Button(action: { dismiss() }) {
-                    Text(\"Cerrar\")
+                    Text("Cerrar")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -37,11 +37,11 @@ public struct AdminPanelView: View {
                 // Header
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(\"Panel de Administración\")
+                        Text("Panel de Administración")
                             .font(.title2)
                             .fontWeight(.bold)
                         HStack(spacing: 8) {
-                            Image(systemName: \"crown.fill\")
+                            Image(systemName: "crown.fill")
                                 .font(.caption)
                                 .foregroundColor(.orange)
                             Text(currentUser.name)
@@ -51,17 +51,17 @@ public struct AdminPanelView: View {
                     }
                     Spacer()
                     Button(action: { dismiss() }) {
-                        Image(systemName: \"xmark.circle.fill\")
+                        Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.gray)
                     }
                 }
                 .padding()
-                .background(Color(.systemBackground))
-                .border(Color(.systemGray4), width: 1)
+                .background(Color.white)
+                .border(Color.gray.opacity(0.3), width: 1)
                 
                 // Tab Navigation
-                Picker(\"Tab\", selection: \$selectedTab) {
-                    ForEach(AdminTab.allCases, id: \\.self) { tab in
+                Picker("Tab", selection: $selectedTab) {
+                    ForEach(AdminTab.allCases, id: \.self) { tab in
                         HStack(spacing: 8) {
                             Image(systemName: tab.icon)
                             Text(tab.label)
@@ -71,7 +71,7 @@ public struct AdminPanelView: View {
                 }
                 .pickerStyle(.segmented)
                 .padding()
-                .background(Color(.systemGray6))
+                .background(Color.gray.opacity(0.1))
                 
                 // Content
                 Group {
@@ -99,22 +99,22 @@ public enum AdminTab: CaseIterable {
     var label: String {
         switch self {
         case .users:
-            return \"Usuarios\"
+            return "Usuarios"
         case .statistics:
-            return \"Estadísticas\"
+            return "Estadísticas"
         case .settings:
-            return \"Configuración\"
+            return "Configuración"
         }
     }
     
     var icon: String {
         switch self {
         case .users:
-            return \"person.3.fill\"
+            return "person.3.fill"
         case .statistics:
-            return \"chart.bar.fill\"
+            return "chart.bar.fill"
         case .settings:
-            return \"gear\"
+            return "gear"
         }
     }
 }
@@ -128,7 +128,7 @@ struct AdminStatisticsView: View {
         VStack(spacing: 16) {
             VStack(spacing: 12) {
                 HStack {
-                    Text(\"Estadísticas\")
+                    Text("Estadísticas")
                         .font(.headline)
                     Spacer()
                 }
@@ -136,30 +136,30 @@ struct AdminStatisticsView: View {
                 ScrollView {
                     VStack(spacing: 12) {
                         StatisticCardView(
-                            title: \"Total de Usuarios\",
-                            value: \"0\",
-                            icon: \"person.fill\",
+                            title: "Total de Usuarios",
+                            value: "0",
+                            icon: "person.fill",
                             color: .blue
                         )
                         
                         StatisticCardView(
-                            title: \"Usuarios Activos\",
-                            value: \"0\",
-                            icon: \"checkmark.circle.fill\",
+                            title: "Usuarios Activos",
+                            value: "0",
+                            icon: "checkmark.circle.fill",
                             color: .green
                         )
                         
                         StatisticCardView(
-                            title: \"Administradores\",
-                            value: \"1\",
-                            icon: \"crown.fill\",
+                            title: "Administradores",
+                            value: "1",
+                            icon: "crown.fill",
                             color: .orange
                         )
                         
                         StatisticCardView(
-                            title: \"Catálogos\",
-                            value: \"0\",
-                            icon: \"books.vertical.fill\",
+                            title: "Catálogos",
+                            value: "0",
+                            icon: "books.vertical.fill",
                             color: .purple
                         )
                     }
@@ -200,7 +200,7 @@ struct StatisticCardView: View {
             Spacer()
         }
         .padding()
-        .background(Color(.systemGray6))
+        .background(Color.gray.opacity(0.1))
         .cornerRadius(8)
     }
 }
@@ -214,47 +214,47 @@ struct AdminSettingsView: View {
         ScrollView {
             VStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(\"Información del Administrador\", systemImage: \"person.fill\")
+                    Label("Información del Administrador", systemImage: "person.fill")
                         .fontWeight(.semibold)
                     
                     VStack(spacing: 12) {
-                        InfoSettingRowView(label: \"Email\", value: currentUser.email)
-                        InfoSettingRowView(label: \"Usuario\", value: currentUser.username)
-                        InfoSettingRowView(label: \"Nombre\", value: currentUser.name)
+                        InfoSettingRowView(label: "Email", value: currentUser.email)
+                        InfoSettingRowView(label: "Usuario", value: currentUser.username)
+                        InfoSettingRowView(label: "Nombre", value: currentUser.name)
                     }
                 }
                 .padding()
-                .background(Color(.systemGray6))
+                .background(Color.gray.opacity(0.1))
                 .cornerRadius(8)
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(\"Configuración del Sistema\", systemImage: \"gear\")
+                    Label("Configuración del Sistema", systemImage: "gear")
                         .fontWeight(.semibold)
                     
                     VStack(spacing: 12) {
-                        SettingToggleRowView(title: \"Mantenimiento\", isOn: false)
-                        SettingToggleRowView(title: \"Modo Seguro\", isOn: true)
-                        SettingToggleRowView(title: \"Logs Detallados\", isOn: false)
+                        SettingToggleRowView(title: "Mantenimiento", isOn: false)
+                        SettingToggleRowView(title: "Modo Seguro", isOn: true)
+                        SettingToggleRowView(title: "Logs Detallados", isOn: false)
                     }
                 }
                 .padding()
-                .background(Color(.systemGray6))
+                .background(Color.gray.opacity(0.1))
                 .cornerRadius(8)
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(\"Backup\", systemImage: \"externaldrive.badge.checkmark\")
+                    Label("Backup", systemImage: "externaldrive.badge.checkmark")
                         .fontWeight(.semibold)
                     
                     VStack(spacing: 12) {
                         Button(action: {}) {
-                            Label(\"Hacer Backup Ahora\", systemImage: \"square.and.arrow.down\")
+                            Label("Hacer Backup Ahora", systemImage: "square.and.arrow.down")
                                 .frame(maxWidth: .infinity, alignment: .center)
                         }
                         .buttonStyle(.borderedProminent)
                     }
                 }
                 .padding()
-                .background(Color(.systemGray6))
+                .background(Color.gray.opacity(0.1))
                 .cornerRadius(8)
                 
                 Spacer()
@@ -280,7 +280,7 @@ struct InfoSettingRowView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.white)
         .cornerRadius(6)
     }
 }
@@ -296,22 +296,10 @@ struct SettingToggleRowView: View {
             Text(title)
                 .font(.subheadline)
             Spacer()
-            Toggle(\"\", isOn: \$isOn)
+            Toggle("", isOn: $isOn)
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(Color.white)
         .cornerRadius(6)
     }
-}
-
-#Preview {
-    let mockUser = User(
-        _id: BSONObjectID(),
-        email: \"admin@example.com\",
-        username: \"admin\",
-        name: \"Administrador\",
-        isAdmin: true
-    )
-    let mockViewModel = AdminViewModel(mongoService: MockMongoService())
-    AdminPanelView(viewModel: mockViewModel, currentUser: mockUser)
 }
