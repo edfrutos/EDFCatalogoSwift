@@ -279,7 +279,9 @@ public struct CatalogsView: View {
         }
         .sheet(isPresented: $showingUserProfile) {
             if let user = authViewModel.currentUser {
-                UserProfileView(user: user)
+                UserProfileView(user: user) {
+                    await authViewModel.reloadCurrentUser()
+                }
             }
         }
     }

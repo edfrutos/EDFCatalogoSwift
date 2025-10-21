@@ -32,6 +32,7 @@ public actor MongoService: Sendable {
         
         let possiblePaths = [
             "\(FileManager.default.currentDirectoryPath)/.env",
+            "\(Bundle.main.resourcePath ?? "")/.env",  // Bundle Resources (app empaquetada)
             "\(NSHomeDirectory())/edefrutos2025.xyz/httpdocs/.env",
             "/Users/edefrutos/__Proyectos/EDFCatalogoSwift/.env"
         ]
