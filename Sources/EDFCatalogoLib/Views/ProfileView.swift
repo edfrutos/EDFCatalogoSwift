@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 public struct ProfileView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
     @StateObject private var viewModel: UserProfileViewModel
+    @State private var showingContact = false
     
     public init() {
         // Se inicializará en onAppear cuando tengamos el usuario
@@ -43,11 +44,22 @@ public struct ProfileView: View {
                         Text("Nombre de Usuario *")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        TextField("Ej: Juan Pérez", text: $viewModel.name)
+                        TextField("Ej: juanp", text: $viewModel.username)
+                            .textFieldStyle(.roundedBorder)
+                            .disableAutocorrection(true)
+                    }
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Nombre para Mostrar *")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Ej: Juan", text: $viewModel.name)
                             .textFieldStyle(.roundedBorder)
                     }
                 }
                 .padding(.horizontal)
+                
+                Divider()
                 
                 Divider()
                 
@@ -56,6 +68,14 @@ public struct ProfileView: View {
                     Text("Información Adicional (Opcional)")
                         .font(.headline)
                         .foregroundColor(.secondary)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Nombre y Apellidos Completos")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Ej: Juan Pérez García", text: $viewModel.fullName)
+                            .textFieldStyle(.roundedBorder)
+                    }
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Teléfono")
@@ -97,6 +117,8 @@ public struct ProfileView: View {
                 
                 Divider()
                 
+                Divider()
+                
                 // Cambiar contraseña
                 ChangePasswordSection(viewModel: viewModel)
                 
@@ -113,19 +135,32 @@ public struct ProfileView: View {
                         .padding(.horizontal)
                 }
                 
-                // Botón de guardar
-                Button(viewModel.isSaving ? "Guardando..." : "Guardar Cambios") {
-                    Task {
-                        await viewModel.saveProfile()
+                // Botones de acción
+                HStack(spacing: 16) {
+                    Button(viewModel.isSaving ? "Guardando..." : "Guardar Cambios") {
+                        Task {
+                            await viewModel.saveProfile()
+                        }
                     }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.isSaving || !viewModel.canSave)
+                    
+                    Button {
+                        showingContact = true
+                    } label: {
+                        Label("Contactar soporte", systemImage: "envelope")
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(viewModel.isSaving || !viewModel.canSave)
                 .padding(.horizontal)
                 .padding(.bottom, 20)
             }
         }
         .navigationTitle("Perfil")
+        .sheet(isPresented: $showingContact) {
+            ContactView()
+                .environmentObject(authViewModel)
+        }
         .onAppear {
             if let user = authViewModel.currentUser {
                 viewModel.updateUser(user)

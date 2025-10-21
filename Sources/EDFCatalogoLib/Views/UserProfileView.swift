@@ -16,28 +16,32 @@ struct UserProfileView: View {
     }
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                // Header
-                HStack {
-                    Text("Perfil de Usuario")
-                        .font(.largeTitle)
-                        .fontWeight(.bold)
-                    
-                    Spacer()
-                    
-                    Button("Cerrar") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .buttonStyle(.bordered)
+        VStack(spacing: 0) {
+            // Header fijo
+            HStack {
+                Text("Perfil de Usuario")
+                    .font(.largeTitle)
+                    .fontWeight(.bold)
+                
+                Spacer()
+                
+                Button("Cerrar") {
+                    presentationMode.wrappedValue.dismiss()
                 }
-                .padding(.horizontal)
-                .padding(.top, 20)
+                .buttonStyle(.bordered)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(Color(nsColor: .windowBackgroundColor))
+            
+            Divider()
                 
-                Divider()
-                
-                // Foto de perfil
-                ProfileImageSection(viewModel: viewModel)
+            // Contenido scrollable
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Foto de perfil
+                    ProfileImageSection(viewModel: viewModel)
+                        .padding(.top, 16)
                 
                 Divider()
                 
@@ -62,7 +66,17 @@ struct UserProfileView: View {
                         Text("Nombre de Usuario *")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        TextField("Ej: Juan Pérez", text: $viewModel.name)
+                        TextField("Ej: juanp", text: $viewModel.username)
+                            .textFieldStyle(.roundedBorder)
+                            .disableAutocorrection(true)
+                    }
+                    
+                    // Nombre para mostrar (obligatorio)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Nombre para Mostrar *")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Ej: Juan", text: $viewModel.name)
                             .textFieldStyle(.roundedBorder)
                     }
                 }
@@ -75,6 +89,14 @@ struct UserProfileView: View {
                     Text("Información Adicional (Opcional)")
                         .font(.headline)
                         .foregroundColor(.secondary)
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Nombre y Apellidos Completos")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        TextField("Ej: Juan Pérez García", text: $viewModel.fullName)
+                            .textFieldStyle(.roundedBorder)
+                    }
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Teléfono")
@@ -132,26 +154,33 @@ struct UserProfileView: View {
                         .padding(.horizontal)
                 }
                 
-                // Botones de acción
-                HStack(spacing: 16) {
-                    Button("Cancelar") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .buttonStyle(.bordered)
-                    
-                    Button(viewModel.isSaving ? "Guardando..." : "Guardar Cambios") {
-                        Task {
-                            await viewModel.saveProfile()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(viewModel.isSaving || !viewModel.canSave)
+                // Espaciado al final del scroll
+                Color.clear.frame(height: 20)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 20)
             }
+            
+            Divider()
+            
+            // Botones de acción fijos
+            HStack(spacing: 16) {
+                Button("Cancelar") {
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .buttonStyle(.bordered)
+                
+                Button(viewModel.isSaving ? "Guardando..." : "Guardar Cambios") {
+                    Task {
+                        await viewModel.saveProfile()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.isSaving || !viewModel.canSave)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
-        .frame(width: 600, height: 700)
+        .frame(minWidth: 600, idealWidth: 650, maxWidth: 800, minHeight: 600, idealHeight: 750, maxHeight: .infinity)
     }
 }
 
@@ -234,24 +263,21 @@ struct ChangePasswordSection: View {
                         Text("Contraseña Actual *")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        SecureField("", text: $viewModel.currentPassword)
-                            .textFieldStyle(.roundedBorder)
+                        SecureFieldWithToggle("", text: $viewModel.currentPassword)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Nueva Contraseña *")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        SecureField("Mínimo 6 caracteres", text: $viewModel.newPassword)
-                            .textFieldStyle(.roundedBorder)
+                        SecureFieldWithToggle("Mínimo 6 caracteres", text: $viewModel.newPassword)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Confirmar Nueva Contraseña *")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        SecureField("", text: $viewModel.confirmPassword)
-                            .textFieldStyle(.roundedBorder)
+                        SecureFieldWithToggle("", text: $viewModel.confirmPassword)
                     }
                     
                     if !viewModel.passwordsMatch {
@@ -281,9 +307,11 @@ class UserProfileViewModel: ObservableObject {
     
     // Campos obligatorios
     @Published var email: String
+    @Published var username: String
     @Published var name: String
     
     // Campos opcionales
+    @Published var fullName: String
     @Published var phone: String
     @Published var company: String
     @Published var address: String
@@ -306,7 +334,7 @@ class UserProfileViewModel: ObservableObject {
     private var selectedImageFile: URL?
     
     var canSave: Bool {
-        !name.isEmpty && !email.isEmpty
+        !username.isEmpty && !name.isEmpty && !email.isEmpty
     }
     
     var passwordsMatch: Bool {
@@ -316,7 +344,9 @@ class UserProfileViewModel: ObservableObject {
     init(user: User) {
         self.originalUser = user
         self.email = user.email
+        self.username = user.username
         self.name = user.name
+        self.fullName = user.fullName ?? ""
         self.phone = user.phone ?? ""
         self.company = user.company ?? ""
         self.address = user.address ?? ""
@@ -334,7 +364,9 @@ class UserProfileViewModel: ObservableObject {
     
     func updateUser(_ user: User) {
         self.email = user.email
+        self.username = user.username
         self.name = user.name
+        self.fullName = user.fullName ?? ""
         self.phone = user.phone ?? ""
         self.company = user.company ?? ""
         self.address = user.address ?? ""
@@ -470,12 +502,15 @@ class UserProfileViewModel: ObservableObject {
             
             logger.info("💾 Actualizando perfil en MongoDB...")
             logger.info("   - Email: \(self.email, privacy: .public)")
+            logger.info("   - Username: \(self.username, privacy: .public)")
             logger.info("   - Nombre: \(self.name, privacy: .public)")
             logger.info("   - ProfileImageUrl: \(self.profileImageUrl ?? "nil", privacy: .public)")
             
             try await mongoService.updateUserProfile(
                 email: email,
+                username: username,
                 name: name,
+                fullName: fullName.isEmpty ? nil : fullName,
                 phone: phone.isEmpty ? nil : phone,
                 company: company.isEmpty ? nil : company,
                 address: address.isEmpty ? nil : address,
@@ -486,7 +521,7 @@ class UserProfileViewModel: ObservableObject {
             // Actualizar contraseña si se solicitó
             if !newPassword.isEmpty {
                 // Verificar contraseña actual
-                let authResult = try await mongoService.authenticateUser(email: email, password: currentPassword)
+                let authResult = try await mongoService.authenticateUser(emailOrUsername: email, password: currentPassword)
                 
                 guard authResult != nil else {
                     passwordError = "Contraseña actual incorrecta"

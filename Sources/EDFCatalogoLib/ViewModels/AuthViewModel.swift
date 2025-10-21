@@ -17,8 +17,8 @@ public final class AuthViewModel: ObservableObject {
     }
 
     /// Login principal con validación real de credenciales contra MongoDB
-    public func signIn(email: String, password: String) async {
-        logger.info("🔐 Iniciando proceso de login para: \(email, privacy: .public)")
+    public func signIn(emailOrUsername: String, password: String) async {
+        logger.info("🔐 Iniciando proceso de login para: \(emailOrUsername, privacy: .public)")
         isLoading = true
         errorMessage = nil
         defer { 
@@ -27,37 +27,31 @@ public final class AuthViewModel: ObservableObject {
         }
 
         // Validación básica
-        guard !email.isEmpty, !password.isEmpty else {
-            errorMessage = "Por favor, introduce email y contraseña"
-            logger.warning("⚠️ Email o contraseña vacíos")
-            return
-        }
-        
-        guard email.contains("@") else {
-            errorMessage = "Por favor, introduce un email válido"
-            logger.warning("⚠️ Email inválido")
+        guard !emailOrUsername.isEmpty, !password.isEmpty else {
+            errorMessage = "Por favor, introduce usuario/email y contraseña"
+            logger.warning("⚠️ Usuario o contraseña vacíos")
             return
         }
 
         do {
             logger.info("🔍 Autenticando usuario contra MongoDB...")
             
-            // Autenticar usuario con credenciales reales
-            if let user = try await mongo.authenticateUser(email: email, password: password) {
+            // Autenticar usuario con credenciales reales (email o username)
+            if let user = try await mongo.authenticateUser(emailOrUsername: emailOrUsername, password: password) {
                 currentUser = user
                 isAuthenticated = true
                 
                 // Guardar email en Keychain para persistencia (usamos email como token)
                 KeychainService.shared.saveToken(user.email)
                 
-                logger.info("✅ Login exitoso para: \(email, privacy: .public)")
-                logger.info("👤 Usuario: \(user.email, privacy: .public), Admin: \(user.isAdmin, privacy: .public)")
+                logger.info("✅ Login exitoso para: \(emailOrUsername, privacy: .public)")
+                logger.info("👤 Usuario: \(user.username, privacy: .public) (\(user.email, privacy: .public)), Admin: \(user.isAdmin, privacy: .public)")
                 logger.info("🔑 Email guardado en Keychain para persistencia")
             } else {
                 currentUser = nil
                 isAuthenticated = false
-                errorMessage = "Email o contraseña incorrectos"
-                logger.warning("❌ Credenciales inválidas para: \(email, privacy: .public)")
+                errorMessage = "Usuario/email o contraseña incorrectos"
+                logger.warning("❌ Credenciales inválidas para: \(emailOrUsername, privacy: .public)")
             }
         } catch {
             currentUser = nil
@@ -142,5 +136,106 @@ public final class AuthViewModel: ObservableObject {
         errorMessage = nil
         
         logger.info("✅ Sesión cerrada correctamente")
+    }
+    
+    /// Registro de nuevo usuario
+    public func register(username: String, name: String, email: String, password: String) async -> Bool {
+        logger.info("📝 Iniciando proceso de registro para: \(email, privacy: .public)")
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        
+        do {
+            // Verificar si el usuario ya existe
+            if try await mongo.checkUserExists(email: email) {
+                errorMessage = "Ya existe una cuenta con este email"
+                logger.warning("⚠️ Usuario ya existe: \(email, privacy: .public)")
+                return false
+            }
+            
+            // Crear usuario en MongoDB
+            try await mongo.createUser(username: username, name: name, email: email, password: password)
+            
+            // Enviar email de bienvenida
+            Task {
+                try? await EmailService.shared.sendWelcomeEmail(to: email, name: name)
+            }
+            
+            // Iniciar sesión automáticamente
+            await signIn(emailOrUsername: email, password: password)
+            
+            logger.info("✅ Registro exitoso para: \(email, privacy: .public)")
+            return true
+            
+        } catch {
+            errorMessage = "Error al crear la cuenta: \(error.localizedDescription)"
+            logger.error("❌ Error en registro: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+    
+    /// Solicitar recuperación de contraseña
+    public func requestPasswordReset(email: String) async -> Bool {
+        logger.info("🔑 Solicitando recuperación de contraseña para: \(email, privacy: .public)")
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        
+        do {
+            // Verificar que el usuario existe
+            guard try await mongo.checkUserExists(email: email) else {
+                errorMessage = "No existe una cuenta con este email"
+                logger.warning("⚠️ Usuario no encontrado: \(email, privacy: .public)")
+                return false
+            }
+            
+            // Generar token de recuperación (6 dígitos)
+            let resetToken = String(format: "%06d", Int.random(in: 0...999999))
+            
+            // Guardar token en MongoDB con expiración de 1 hora
+            try await mongo.savePasswordResetToken(email: email, token: resetToken)
+            
+            // Enviar email con el token
+            try await EmailService.shared.sendPasswordResetEmail(to: email, resetToken: resetToken)
+            
+            logger.info("✅ Email de recuperación enviado a: \(email, privacy: .public)")
+            return true
+            
+        } catch {
+            errorMessage = "Error al enviar el email: \(error.localizedDescription)"
+            logger.error("❌ Error en recuperación: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+    
+    /// Restablecer contraseña con token
+    public func resetPassword(email: String, token: String, newPassword: String) async -> Bool {
+        logger.info("🔑 Restableciendo contraseña para: \(email, privacy: .public)")
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        
+        do {
+            // Verificar el token
+            guard try await mongo.verifyPasswordResetToken(email: email, token: token) else {
+                errorMessage = "Código inválido o expirado"
+                logger.warning("⚠️ Token inválido para: \(email, privacy: .public)")
+                return false
+            }
+            
+            // Actualizar contraseña
+            try await mongo.updatePassword(email: email, newPassword: newPassword)
+            
+            // Limpiar token de recuperación
+            try? await mongo.clearPasswordResetToken(email: email)
+            
+            logger.info("✅ Contraseña restablecida exitosamente para: \(email, privacy: .public)")
+            return true
+            
+        } catch {
+            errorMessage = "Error al restablecer la contraseña: \(error.localizedDescription)"
+            logger.error("❌ Error al restablecer contraseña: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
     }
 }

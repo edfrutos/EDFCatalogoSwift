@@ -19,11 +19,13 @@ LayoutEngineBox.sizeThatFits(_:)
 ```
 
 **Causa:**
+
 - `MainView` contenía un `NavigationSplitView` con `ContentView()` en el detail
 - `ContentView` mostraba `MainView` cuando el usuario estaba autenticado
 - Esto creaba un ciclo infinito: `MainView` → `ContentView` → `MainView` → ...
 
 **Solución:**
+
 - ✅ Eliminado el ciclo de recursión
 - ✅ `MainView` ahora maneja directamente las vistas de detalle sin pasar por `ContentView`
 - ✅ Implementado sistema de navegación moderno con `NavigationItem` enum
@@ -36,6 +38,7 @@ error: 'main' attribute cannot be used in a module that contains top-level code
 ```
 
 **Solución:**
+
 - ✅ Reestructurado `Package.swift` con dos targets:
   - `EDFCatalogoLib`: Biblioteca con todo el código
   - `EDFCatalogoSwift`: Ejecutable con solo el punto de entrada
@@ -44,9 +47,11 @@ error: 'main' attribute cannot be used in a module that contains top-level code
 ### 3. **Problema: Variables de Entorno no Cargadas**
 
 **Síntoma:**
+
 - La aplicación .app no cargaba el archivo `.env` al ejecutarse con `open`
 
 **Solución:**
+
 - ✅ Mejorado `launcher.sh` para buscar `.env` en el directorio del proyecto
 - ✅ Creado script `run_app.sh` para ejecutar la aplicación con variables de entorno
 
@@ -96,21 +101,25 @@ private var detailView: some View {
 ```
 
 #### 3. **Sources/EDFCatalogoLib/Views/LoginView.swift**
+
 - ✅ Agregado indicador de carga (`ProgressView`)
 - ✅ Mejorado manejo de errores desde `AuthViewModel`
 - ✅ Deshabilitado botón cuando campos están vacíos
 
 #### 4. **Sources/EDFCatalogoLib/ViewModels/AuthViewModel.swift**
+
 - ✅ Agregados logs de depuración con emojis
 - ✅ Validación de email y contraseña
 - ✅ Mejor manejo de errores
 
 #### 5. **Sources/EDFCatalogoLib/Services/MongoService.swift**
+
 - ✅ Agregado flag `isConnecting` para evitar conexiones simultáneas
 - ✅ Logs informativos de conexión
 - ✅ Mejor manejo de errores con mensajes descriptivos
 
 #### 6. **build_app.sh**
+
 - ✅ Mejorado `launcher.sh` para cargar `.env` desde el directorio del proyecto
 - ✅ Agregados mensajes informativos en el launcher
 
@@ -204,6 +213,7 @@ S3_BUCKET=tu-bucket
 ## 🎯 Estado Final
 
 ### ✅ Problemas Resueltos
+
 - [x] Error de compilación con atributo `@main`
 - [x] Bucle infinito de recursión en layout
 - [x] Crash al intentar hacer login
@@ -211,6 +221,7 @@ S3_BUCKET=tu-bucket
 - [x] NavigationLink deprecado
 
 ### ✅ Mejoras Implementadas
+
 - [x] Logs de depuración informativos
 - [x] Validación de entrada en login
 - [x] Indicador de carga en UI
@@ -219,6 +230,7 @@ S3_BUCKET=tu-bucket
 - [x] Scripts de ejecución facilitados
 
 ### 📊 Métricas
+
 - **Tiempo de compilación (debug):** ~27s
 - **Tiempo de compilación (release):** ~64s
 - **Tamaño del ejecutable:** ~4.8 MB

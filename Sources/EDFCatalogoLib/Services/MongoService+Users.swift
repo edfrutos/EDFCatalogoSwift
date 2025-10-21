@@ -3,14 +3,19 @@ import CryptoKit
 import MongoSwift
 
 extension MongoService {
-    /// Verifica las credenciales del usuario contra MongoDB
-    public func authenticateUser(email: String, password: String) async throws -> User? {
-        print("🔍 Autenticando usuario: \(email)")
+    /// Verifica las credenciales del usuario contra MongoDB (por email o username)
+    public func authenticateUser(emailOrUsername: String, password: String) async throws -> User? {
+        print("🔍 Autenticando usuario: \(emailOrUsername)")
         
         let users = try await usersCollection()
         
-        // Buscar usuario por Email (con mayúscula como está en MongoDB)
-        let query: BSONDocument = ["Email": .string(email)]
+        // Buscar usuario por Email O Username
+        let query: BSONDocument = [
+            "$or": .array([
+                .document(["Email": .string(emailOrUsername)]),
+                .document(["Username": .string(emailOrUsername)])
+            ])
+        ]
         print("📝 Query: \(query)")
         
         let cursor = try await users.find(query)
@@ -93,6 +98,7 @@ extension MongoService {
         
         // Extraer campos opcionales
         let userId = userDoc["_id"]?.objectIDValue ?? BSONObjectID()
+        let username = userDoc["Username"]?.stringValue ?? userDoc["Email"]?.stringValue?.components(separatedBy: "@").first ?? "usuario"
         let name = userDoc["Name"]?.stringValue ?? "Usuario"
         
         // Convertir Role a isAdmin
@@ -100,6 +106,7 @@ extension MongoService {
         let isAdmin = (role.lowercased() == "admin")
         
         // Campos opcionales adicionales
+        let fullName = userDoc["FullName"]?.stringValue
         let phone = userDoc["Phone"]?.stringValue
         let company = userDoc["Company"]?.stringValue
         let address = userDoc["Address"]?.stringValue
@@ -118,8 +125,10 @@ extension MongoService {
         return User(
             _id: userId,
             email: userEmail,
+            username: username,
             name: name,
             isAdmin: isAdmin,
+            fullName: fullName,
             phone: phone,
             company: company,
             address: address,
@@ -134,7 +143,9 @@ extension MongoService {
     /// Actualiza el perfil de usuario en MongoDB
     public func updateUserProfile(
         email: String,
+        username: String,
         name: String,
+        fullName: String?,
         phone: String?,
         company: String?,
         address: String?,
@@ -147,10 +158,14 @@ extension MongoService {
         let filter: BSONDocument = ["Email": .string(email)]
         
         var updateDoc: BSONDocument = [
+            "Username": .string(username),
             "Name": .string(name)
         ]
         
         // Agregar campos opcionales solo si no son nil
+        if let fullName = fullName, !fullName.isEmpty {
+            updateDoc["FullName"] = .string(fullName)
+        }
         if let phone = phone, !phone.isEmpty {
             updateDoc["Phone"] = .string(phone)
         }
@@ -232,6 +247,7 @@ extension MongoService {
         
         let userId = userDoc["_id"]?.objectIDValue ?? BSONObjectID()
         let userEmail = userDoc["Email"]?.stringValue ?? email
+        let username = userDoc["Username"]?.stringValue ?? userDoc["Email"]?.stringValue?.components(separatedBy: "@").first ?? "usuario"
         let name = userDoc["Name"]?.stringValue ?? "Usuario"
         
         // Convertir Role a isAdmin
@@ -239,6 +255,7 @@ extension MongoService {
         let isAdmin = (role.lowercased() == "admin")
         
         // Campos opcionales
+        let fullName = userDoc["FullName"]?.stringValue
         let phone = userDoc["Phone"]?.stringValue
         let company = userDoc["Company"]?.stringValue
         let address = userDoc["Address"]?.stringValue
@@ -253,8 +270,10 @@ extension MongoService {
         return User(
             _id: userId,
             email: userEmail,
+            username: username,
             name: name,
             isAdmin: isAdmin,
+            fullName: fullName,
             phone: phone,
             company: company,
             address: address,
@@ -264,5 +283,136 @@ extension MongoService {
             createdAt: createdAt,
             lastLoginAt: lastLoginAt
         )
+    }
+    
+    /// Crea un nuevo usuario en MongoDB
+    public func createUser(username: String, name: String, email: String, password: String) async throws {
+        print("📝 Creando nuevo usuario: \(email)")
+        
+        let users = try await usersCollection()
+        
+        // Hash de la contraseña con SHA256
+        let passwordData = password.data(using: .utf8)!
+        let hash = SHA256.hash(data: passwordData)
+        let hashData = Data(hash)
+        let passwordHash = hashData.base64EncodedString()
+        
+        let userDoc: BSONDocument = [
+            "_id": .objectID(BSONObjectID()),
+            "Email": .string(email),
+            "Username": .string(username),
+            "Name": .string(name),
+            "Password": .string(passwordHash),
+            "Role": .string("user"),
+            "IsActive": .bool(true),
+            "CreatedAt": .datetime(Date())
+        ]
+        
+        _ = try await users.insertOne(userDoc)
+        print("✅ Usuario creado exitosamente")
+    }
+    
+    /// Guarda token de recuperación de contraseña
+    public func savePasswordResetToken(email: String, token: String) async throws {
+        print("🔑 Guardando token de recuperación para: \(email)")
+        
+        let users = try await usersCollection()
+        let filter: BSONDocument = ["Email": .string(email)]
+        
+        // Expira en 1 hora
+        let expiresAt = Date().addingTimeInterval(3600)
+        
+        let update: BSONDocument = [
+            "$set": .document([
+                "ResetToken": .string(token),
+                "ResetTokenExpires": .datetime(expiresAt)
+            ])
+        ]
+        
+        let result = try await users.updateOne(filter: filter, update: update)
+        
+        if let matchedCount = result?.matchedCount, matchedCount > 0 {
+            print("✅ Token guardado correctamente")
+        } else {
+            throw NSError(domain: "MongoService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Usuario no encontrado"])
+        }
+    }
+    
+    /// Verifica el token de recuperación de contraseña
+    public func verifyPasswordResetToken(email: String, token: String) async throws -> Bool {
+        print("🔍 Verificando token de recuperación para: \(email)")
+        
+        let users = try await usersCollection()
+        let query: BSONDocument = ["Email": .string(email)]
+        
+        let cursor = try await users.find(query)
+        let results = try await cursor.toArray()
+        
+        guard let userDoc = results.first else {
+            print("❌ Usuario no encontrado")
+            return false
+        }
+        
+        guard let storedToken = userDoc["ResetToken"]?.stringValue,
+              let expiresAt = userDoc["ResetTokenExpires"]?.dateValue else {
+            print("❌ Token no encontrado en el documento")
+            return false
+        }
+        
+        // Verificar que el token coincida
+        guard storedToken == token else {
+            print("❌ Token no coincide")
+            return false
+        }
+        
+        // Verificar que no haya expirado
+        guard expiresAt > Date() else {
+            print("❌ Token expirado")
+            return false
+        }
+        
+        print("✅ Token válido")
+        return true
+    }
+    
+    /// Actualiza la contraseña de un usuario
+    public func updatePassword(email: String, newPassword: String) async throws {
+        print("🔑 Actualizando contraseña para: \(email)")
+        
+        // Hash de la nueva contraseña con SHA256
+        let passwordData = newPassword.data(using: .utf8)!
+        let hash = SHA256.hash(data: passwordData)
+        let hashData = Data(hash)
+        let passwordHash = hashData.base64EncodedString()
+        
+        let users = try await usersCollection()
+        let filter: BSONDocument = ["Email": .string(email)]
+        let update: BSONDocument = ["$set": ["Password": .string(passwordHash)]]
+        
+        let result = try await users.updateOne(filter: filter, update: update)
+        
+        if let matchedCount = result?.matchedCount, matchedCount > 0 {
+            print("✅ Contraseña actualizada correctamente")
+        } else {
+            throw NSError(domain: "MongoService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Usuario no encontrado"])
+        }
+    }
+    
+    /// Limpia el token de recuperación de contraseña
+    public func clearPasswordResetToken(email: String) async throws {
+        print("🧽 Limpiando token de recuperación para: \(email)")
+        
+        let users = try await usersCollection()
+        let filter: BSONDocument = ["Email": .string(email)]
+        
+        let update: BSONDocument = [
+            "$unset": .document([
+                "ResetToken": "",
+                "ResetTokenExpires": ""
+            ])
+        ]
+        
+        _ = try await users.updateOne(filter: filter, update: update)
+        print("✅ Token limpiado correctamente")
     }
 }
