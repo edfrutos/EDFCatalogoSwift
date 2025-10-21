@@ -14,7 +14,7 @@ public actor S3Service: Sendable {
     private let useS3: Bool
     
     // Cliente AWS S3
-    private var s3Client: S3Client?
+    private nonisolated(unsafe) var s3Client: S3Client?
     
     // Límites de tamaño de archivo (en bytes)
     private let maxImageSize: Int = 20 * 1024 * 1024      // 20 MB
@@ -27,6 +27,7 @@ public actor S3Service: Sendable {
         // Buscar .env en múltiples ubicaciones
         let possiblePaths = [
             "\(FileManager.default.currentDirectoryPath)/.env",
+            "\(Bundle.main.resourcePath ?? "")/.env",  // Bundle Resources (app empaquetada)
             "\(NSHomeDirectory())/edefrutos2025.xyz/httpdocs/.env",
             "/Users/edefrutos/__Proyectos/EDFCatalogoSwift/.env"
         ]
@@ -245,19 +246,38 @@ public actor S3Service: Sendable {
             return url
         }
         
-        // NOTA: La generación completa de URLs pre-firmadas con firma AWS v4
-        // requiere implementación compleja de HMAC-SHA256.
-        // Por ahora, devolvemos la URL directa.
-        // SOLUCIÓN: Configurar el bucket S3 con política de acceso público de lectura
-        // o implementar un backend que genere las URLs pre-firmadas.
-        
-        guard let url = URL(string: "https://\(bucketName).s3.\(region).amazonaws.com/\(normalizedKey)") else {
-            throw S3Error.invalidKey(normalizedKey)
+        do {
+            // Generar URL pre-firmada usando el SDK de AWS
+            let getObjectRequest = GetObjectInput(
+                bucket: bucketName,
+                key: normalizedKey
+            )
+            
+            let presignedRequest = try await client.presignedRequestForGetObject(
+                input: getObjectRequest,
+                expiration: TimeInterval(expirationInSeconds)
+            )
+            
+            guard let presignedUrl = presignedRequest.url else {
+                throw S3Error.uploadFailed("No se pudo generar URL pre-firmada")
+            }
+            
+            print("✅ URL pre-firmada generada exitosamente")
+            print("  - URL: \(presignedUrl.absoluteString.prefix(80))...")
+            return presignedUrl
+            
+        } catch {
+            print("❌ Error generando URL pre-firmada: \(error)")
+            print("⚠️ Devolviendo URL directa como fallback (requiere bucket con acceso público)")
+            
+            // Fallback a URL directa
+            guard let url = URL(string: "https://\(bucketName).s3.\(region).amazonaws.com/\(normalizedKey)") else {
+                throw S3Error.invalidKey(normalizedKey)
+            }
+            
+            print("  - URL: \(url.absoluteString.prefix(80))...")
+            return url
         }
-        
-        print("⚠️ Devolviendo URL directa (requiere bucket con acceso público)")
-        print("  - URL: \(url.absoluteString.prefix(80))...")
-        return url
     }
 
 

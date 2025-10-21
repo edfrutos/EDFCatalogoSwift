@@ -9,6 +9,12 @@ public struct ProfileView: View {
         // Se inicializará en onAppear cuando tengamos el usuario
         _viewModel = StateObject(wrappedValue: UserProfileViewModel(user: User.mock(email: "temp@temp.com")))
     }
+    
+    private func setupViewModel() {
+        viewModel.onProfileSaved = { [authViewModel] in
+            await authViewModel.reloadCurrentUser()
+        }
+    }
 
     public var body: some View {
         ScrollView {
@@ -123,6 +129,7 @@ public struct ProfileView: View {
         .onAppear {
             if let user = authViewModel.currentUser {
                 viewModel.updateUser(user)
+                setupViewModel()
             }
         }
     }

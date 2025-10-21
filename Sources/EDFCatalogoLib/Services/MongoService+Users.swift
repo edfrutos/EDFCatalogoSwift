@@ -131,6 +131,72 @@ extension MongoService {
         )
     }
     
+    /// Actualiza el perfil de usuario en MongoDB
+    public func updateUserProfile(
+        email: String,
+        name: String,
+        phone: String?,
+        company: String?,
+        address: String?,
+        occupation: String?,
+        profileImageUrl: String?
+    ) async throws {
+        print("💾 Actualizando perfil de usuario: \(email)")
+        
+        let users = try await usersCollection()
+        let filter: BSONDocument = ["Email": .string(email)]
+        
+        var updateDoc: BSONDocument = [
+            "Name": .string(name)
+        ]
+        
+        // Agregar campos opcionales solo si no son nil
+        if let phone = phone, !phone.isEmpty {
+            updateDoc["Phone"] = .string(phone)
+        }
+        if let company = company, !company.isEmpty {
+            updateDoc["Company"] = .string(company)
+        }
+        if let address = address, !address.isEmpty {
+            updateDoc["Address"] = .string(address)
+        }
+        if let occupation = occupation, !occupation.isEmpty {
+            updateDoc["Occupation"] = .string(occupation)
+        }
+        if let profileImageUrl = profileImageUrl, !profileImageUrl.isEmpty {
+            updateDoc["ProfileImageUrl"] = .string(profileImageUrl)
+        }
+        
+        let update: BSONDocument = ["$set": .document(updateDoc)]
+        
+        let result = try await users.updateOne(filter: filter, update: update)
+        
+        if let matchedCount = result?.matchedCount, matchedCount > 0 {
+            print("✅ Perfil actualizado correctamente")
+        } else {
+            print("⚠️ Usuario no encontrado")
+            throw NSError(domain: "MongoService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Usuario no encontrado"])
+        }
+    }
+    
+    /// Actualiza la contraseña de un usuario
+    public func updateUserPassword(email: String, newPasswordHash: String) async throws {
+        print("🔑 Actualizando contraseña para: \(email)")
+        
+        let users = try await usersCollection()
+        let filter: BSONDocument = ["Email": .string(email)]
+        let update: BSONDocument = ["$set": ["Password": .string(newPasswordHash)]]
+        
+        let result = try await users.updateOne(filter: filter, update: update)
+        
+        if let matchedCount = result?.matchedCount, matchedCount > 0 {
+            print("✅ Contraseña actualizada correctamente")
+        } else {
+            print("⚠️ Usuario no encontrado")
+            throw NSError(domain: "MongoService", code: 404, userInfo: [NSLocalizedDescriptionKey: "Usuario no encontrado"])
+        }
+    }
+    
     /// Comprueba si existe un usuario por email
     public func checkUserExists(email: String) async throws -> Bool {
         print("🔍 Verificando existencia de usuario: \(email)")

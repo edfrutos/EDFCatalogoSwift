@@ -1,12 +1,18 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import CryptoKit
+import os.log
 
 struct UserProfileView: View {
     @StateObject private var viewModel: UserProfileViewModel
     @Environment(\.presentationMode) var presentationMode
+    let onProfileSaved: (() async -> Void)?
     
-    init(user: User) {
-        _viewModel = StateObject(wrappedValue: UserProfileViewModel(user: user))
+    init(user: User, onProfileSaved: (() async -> Void)? = nil) {
+        let vm = UserProfileViewModel(user: user)
+        vm.onProfileSaved = onProfileSaved
+        _viewModel = StateObject(wrappedValue: vm)
+        self.onProfileSaved = onProfileSaved
     }
     
     var body: some View {
@@ -269,7 +275,9 @@ struct ChangePasswordSection: View {
 // MARK: - ViewModel
 @MainActor
 class UserProfileViewModel: ObservableObject {
+    private let logger = Logger(subsystem: "com.edefrutos.catalogo", category: "UserProfile")
     private let originalUser: User
+    var onProfileSaved: (() async -> Void)?
     
     // Campos obligatorios
     @Published var email: String
@@ -314,6 +322,14 @@ class UserProfileViewModel: ObservableObject {
         self.address = user.address ?? ""
         self.occupation = user.occupation ?? ""
         self.profileImageUrl = user.profileImageUrl
+        
+        // Cargar imagen desde URL si existe
+        if let imageUrlString = user.profileImageUrl,
+           let imageUrl = URL(string: imageUrlString) {
+            Task {
+                await self.loadProfileImage(from: imageUrl)
+            }
+        }
     }
     
     func updateUser(_ user: User) {
@@ -323,7 +339,19 @@ class UserProfileViewModel: ObservableObject {
         self.company = user.company ?? ""
         self.address = user.address ?? ""
         self.occupation = user.occupation ?? ""
-        self.profileImageUrl = user.profileImageUrl
+        
+        // Cargar nueva imagen si cambió la URL
+        if self.profileImageUrl != user.profileImageUrl {
+            self.profileImageUrl = user.profileImageUrl
+            if let imageUrlString = user.profileImageUrl,
+               let imageUrl = URL(string: imageUrlString) {
+                Task {
+                    await self.loadProfileImage(from: imageUrl)
+                }
+            } else {
+                self.profileImage = nil
+            }
+        }
     }
     
     func selectProfileImage() {
@@ -348,6 +376,24 @@ class UserProfileViewModel: ObservableObject {
         profileImage = nil
         profileImageUrl = nil
         selectedImageFile = nil
+    }
+    
+    func loadProfileImage(from url: URL) async {
+        logger.info("🖼️ Cargando imagen de perfil desde: \(url.absoluteString, privacy: .public)")
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let image = NSImage(data: data) {
+                await MainActor.run {
+                    self.profileImage = image
+                    logger.info("✅ Imagen de perfil cargada correctamente")
+                }
+            } else {
+                logger.warning("⚠️ No se pudo crear NSImage desde los datos descargados")
+            }
+        } catch {
+            logger.error("❌ Error al cargar imagen de perfil: \(error.localizedDescription, privacy: .public)")
+        }
     }
     
     func clearPasswordFields() {
@@ -391,9 +437,13 @@ class UserProfileViewModel: ObservableObject {
         
         // Subir imagen si hay una nueva
         if let imageFile = selectedImageFile {
+            logger.info("📎 Imagen seleccionada para subir: \(imageFile.path, privacy: .public)")
             isUploadingImage = true
             do {
                 let s3Service = S3Service.shared
+                logger.info("📤 Iniciando subida a S3...")
+                logger.info("   - Usuario ID: \(self.originalUser.id, privacy: .public)")
+                logger.info("   - Archivo: \(imageFile.lastPathComponent, privacy: .public)")
                 let uploadedUrl = try await s3Service.uploadFile(
                     fileUrl: imageFile,
                     userId: originalUser.id,
@@ -401,26 +451,74 @@ class UserProfileViewModel: ObservableObject {
                     fileType: .image
                 )
                 profileImageUrl = uploadedUrl
-                print("✅ Imagen de perfil subida: \(uploadedUrl)")
+                logger.info("✅ Imagen de perfil subida: \(uploadedUrl, privacy: .public)")
             } catch {
+                logger.error("❌ Error al subir imagen: \(error.localizedDescription, privacy: .public)")
                 errorMessage = "Error al subir imagen: \(error.localizedDescription)"
                 isUploadingImage = false
                 isSaving = false
                 return
             }
             isUploadingImage = false
+        } else {
+            logger.warning("⚠️ No hay imagen seleccionada para subir")
         }
         
-        // Aquí implementarías la actualización en MongoDB
-        // Por ahora solo simulamos
-        try? await Task.sleep(nanoseconds: 1_000_000_000)
-        
-        successMessage = "✅ Perfil actualizado correctamente"
-        isSaving = false
-        
-        // Limpiar campos de contraseña después de guardar
-        if !newPassword.isEmpty {
-            clearPasswordFields()
+        // Actualizar perfil en MongoDB
+        do {
+            let mongoService = MongoService.shared
+            
+            logger.info("💾 Actualizando perfil en MongoDB...")
+            logger.info("   - Email: \(self.email, privacy: .public)")
+            logger.info("   - Nombre: \(self.name, privacy: .public)")
+            logger.info("   - ProfileImageUrl: \(self.profileImageUrl ?? "nil", privacy: .public)")
+            
+            try await mongoService.updateUserProfile(
+                email: email,
+                name: name,
+                phone: phone.isEmpty ? nil : phone,
+                company: company.isEmpty ? nil : company,
+                address: address.isEmpty ? nil : address,
+                occupation: occupation.isEmpty ? nil : occupation,
+                profileImageUrl: profileImageUrl
+            )
+            
+            // Actualizar contraseña si se solicitó
+            if !newPassword.isEmpty {
+                // Verificar contraseña actual
+                let authResult = try await mongoService.authenticateUser(email: email, password: currentPassword)
+                
+                guard authResult != nil else {
+                    passwordError = "Contraseña actual incorrecta"
+                    isSaving = false
+                    return
+                }
+                
+                // Generar hash SHA256 de la nueva contraseña
+                if let passwordData = newPassword.data(using: .utf8) {
+                    let hash = SHA256.hash(data: passwordData)
+                    let hashData = Data(hash)
+                    let newPasswordHash = hashData.base64EncodedString()
+                    
+                    try await mongoService.updateUserPassword(email: email, newPasswordHash: newPasswordHash)
+                    logger.info("✅ Contraseña actualizada")
+                }
+            }
+            
+            successMessage = "✅ Perfil actualizado correctamente"
+            isSaving = false
+            
+            // Limpiar campos de contraseña después de guardar
+            if !newPassword.isEmpty {
+                clearPasswordFields()
+            }
+            
+            // Notificar que el perfil se guardó exitosamente
+            await onProfileSaved?()
+            
+        } catch {
+            errorMessage = "Error al guardar: \(error.localizedDescription)"
+            isSaving = false
         }
     }
 }
