@@ -2,36 +2,22 @@ import SwiftUI
 
 public struct AdminView: View {
     @EnvironmentObject private var authViewModel: AuthViewModel
+    @StateObject private var adminViewModel: AdminViewModel
     
-    public init() {}
+    public init() {
+        let mongoService = MongoService.shared
+        _adminViewModel = StateObject(wrappedValue: AdminViewModel(mongoService: mongoService))
+    }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Panel de Administración")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-                .padding(.bottom, 20)
-            
-            Text("Esta sección está disponible solo para administradores")
-                .font(.headline)
-            
-            Text("Aquí podrá gestionar usuarios y configuraciones del sistema")
-                .foregroundColor(.secondary)
-            
-            Spacer()
-            
-            Text("Funcionalidad en desarrollo")
-                .font(.headline)
-                .foregroundColor(.orange)
+        if let currentUser = authViewModel.currentUser {
+            AdminPanelView(viewModel: adminViewModel, currentUser: currentUser)
+        } else {
+            VStack {
+                Text("Error: No se pudo cargar el usuario")
+                    .foregroundColor(.red)
+            }
+            .padding()
         }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-}
-
-struct AdminView_Previews: PreviewProvider {
-    static var previews: some View {
-        AdminView()
-            .environmentObject(AuthViewModel())
     }
 }
