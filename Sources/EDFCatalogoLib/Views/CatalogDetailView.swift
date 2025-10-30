@@ -2052,7 +2052,7 @@ struct FileViewerView: View {
                                         VStack(spacing: 15) {
                                             // WebView para reproducir el video
                                             YouTubeWebView(url: u)
-                                                .frame(minHeight: 300, maxHeight: 400)
+                                                .frame(minHeight: 480, maxHeight: 600)
                                                 .cornerRadius(8)
                                             
                                             VStack(spacing: 8) {
