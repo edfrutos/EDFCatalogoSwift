@@ -4,6 +4,7 @@ import PDFKit
 import AVKit
 import AVFoundation
 import UniformTypeIdentifiers
+import WebKit
 @preconcurrency import SwiftBSON
 
 // MARK: - ViewModel
@@ -602,33 +603,54 @@ struct CatalogRowView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Archivos asociados").font(.headline)
 
+                            // Imagen principal
                             if let image = row.files.image {
                                 FileItemView(url: image, type: "Imagen principal") {
                                     let fileName = URL(string: image)?.lastPathComponent ?? "Imagen principal"
-                                    print("📝 DEBUG - Imagen seleccionada:")
-                                    print("  URL: \(image)")
-                                    print("  Nombre: \(fileName)")
                                     onFileSelected(image, fileName)
                                 }
                             }
-
-                            if let document = row.files.document {
-                                FileItemView(url: document, type: "Documento principal") {
-                                    let fileName = URL(string: document)?.lastPathComponent ?? "Documento principal"
-                                    print("📝 DEBUG - Documento seleccionado:")
-                                    print("  URL: \(document)")
-                                    print("  Nombre: \(fileName)")
-                                    onFileSelected(document, fileName)
+                            // Imágenes adicionales
+                            if !row.files.images.isEmpty {
+                                ForEach(row.files.images, id: \.self) { img in
+                                    FileItemView(url: img, type: "Imagen adicional") {
+                                        let fileName = URL(string: img)?.lastPathComponent ?? "Imagen adicional"
+                                        onFileSelected(img, fileName)
+                                    }
                                 }
                             }
 
+                            // Documento principal
+                            if let document = row.files.document {
+                                FileItemView(url: document, type: "Documento principal") {
+                                    let fileName = URL(string: document)?.lastPathComponent ?? "Documento principal"
+                                    onFileSelected(document, fileName)
+                                }
+                            }
+                            // Documentos adicionales
+                            if !row.files.documents.isEmpty {
+                                ForEach(row.files.documents, id: \.self) { doc in
+                                    FileItemView(url: doc, type: "Documento adicional") {
+                                        let fileName = URL(string: doc)?.lastPathComponent ?? "Documento adicional"
+                                        onFileSelected(doc, fileName)
+                                    }
+                                }
+                            }
+
+                            // Multimedia principal
                             if let multimedia = row.files.multimedia {
                                 FileItemView(url: multimedia, type: "Multimedia principal") {
                                     let fileName = URL(string: multimedia)?.lastPathComponent ?? "Multimedia principal"
-                                    print("📝 DEBUG - Multimedia seleccionado:")
-                                    print("  URL: \(multimedia)")
-                                    print("  Nombre: \(fileName)")
                                     onFileSelected(multimedia, fileName)
+                                }
+                            }
+                            // Multimedia adicional
+                            if !row.files.multimediaFiles.isEmpty {
+                                ForEach(row.files.multimediaFiles, id: \.self) { media in
+                                    FileItemView(url: media, type: "Multimedia adicional") {
+                                        let fileName = URL(string: media)?.lastPathComponent ?? "Multimedia adicional"
+                                        onFileSelected(media, fileName)
+                                    }
                                 }
                             }
                         }
@@ -696,15 +718,67 @@ struct FileItemView: View {
 
             Spacer()
 
-            Button("Ver") { onSelect() }
+            Button("Ver") { 
+                print("🔘 DEBUG - Botón 'Ver' presionado")
+                print("  URL: \(url)")
+                print("  Tipo: \(type)")
+                onSelect() 
+            }
                 .buttonStyle(.bordered)
         }
         .padding(.vertical, 4)
     }
 
     private var fileName: String {
-        if let u = URL(string: url) { return u.lastPathComponent }
-        return url
+        guard let urlObj = URL(string: url) else { return "Archivo" }
+        
+        // Para URLs de YouTube, extraer el ID del video
+        if url.lowercased().contains("youtube.com") || url.lowercased().contains("youtu.be") {
+            if let videoId = extractYouTubeVideoId(from: url) {
+                return "Video de YouTube - \(videoId)"
+            }
+        }
+        
+        // Para otras URLs de streaming, usar un nombre más descriptivo
+        if url.lowercased().contains("vimeo.com") {
+            return "Video de Vimeo"
+        } else if url.lowercased().contains("dailymotion.com") {
+            return "Video de Dailymotion"
+        } else if url.lowercased().contains("twitch.tv") {
+            return "Video de Twitch"
+        }
+        
+        // Para archivos normales, usar el nombre del archivo
+        let lastPath = urlObj.lastPathComponent
+        if lastPath.isEmpty || lastPath == "/" {
+            return "Archivo multimedia"
+        }
+        
+        return lastPath
+    }
+    
+    private func extractYouTubeVideoId(from urlString: String) -> String? {
+        let url = urlString.lowercased()
+        
+        // Patrón para youtube.com/watch?v=VIDEO_ID
+        if let range = url.range(of: "v=") {
+            let startIndex = range.upperBound
+            let endIndex = url.index(startIndex, offsetBy: 11) // Los IDs de YouTube tienen 11 caracteres
+            if endIndex <= url.endIndex {
+                return String(url[startIndex..<endIndex])
+            }
+        }
+        
+        // Patrón para youtu.be/VIDEO_ID
+        if let range = url.range(of: "youtu.be/") {
+            let startIndex = range.upperBound
+            let endIndex = url.index(startIndex, offsetBy: 11)
+            if endIndex <= url.endIndex {
+                return String(url[startIndex..<endIndex])
+            }
+        }
+        
+        return nil
     }
 
     private var iconName: String {
@@ -1207,6 +1281,11 @@ struct EditRowView: View {
         _additionalImages = State(initialValue: files.images)
         _additionalDocuments = State(initialValue: files.documents)
         _additionalMultimedia = State(initialValue: files.multimediaFiles)
+        
+        print("🔍 DEBUG - Archivos adicionales inicializados:")
+        print("  additionalImages: \(files.images)")
+        print("  additionalDocuments: \(files.documents)")
+        print("  additionalMultimedia: \(files.multimediaFiles)")
         self.columns = columns
         self.catalogId = catalogId
         self.onSave = onSave
@@ -1572,24 +1651,100 @@ struct FileViewerView: View {
     // Deducción local del "tipo" por extensión — evita ambigüedad con FileType
     private enum LocalFileKind { case image, pdf, video, text, other }
 
+    // Indica si la URL actual apunta a un vídeo de plataforma de streaming
+    private var isStreaming: Bool {
+        guard let u = resolvedURL else { return false }
+        return isStreamingVideoURL(u)
+    }
     private var kind: LocalFileKind {
         let lower = fileName.lowercased()
+        let urlLower = url.lowercased()
+        
+        print("🔍 DEBUG - Detección de tipo de archivo:")
+        print("  fileName: \(fileName)")
+        print("  url: \(url)")
+        print("  lower: \(lower)")
+        print("  urlLower: \(urlLower)")
+        
+        // Detectar por extensión de archivo
         if lower.hasSuffix(".png") || lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg") || lower.hasSuffix(".gif") || lower.hasSuffix(".webp") {
+            print("  ✅ Detectado como IMAGEN por extensión")
             return .image
         } else if lower.hasSuffix(".pdf") {
+            print("  ✅ Detectado como PDF por extensión")
             return .pdf
         } else if lower.hasSuffix(".mp4") || lower.hasSuffix(".mov") || lower.hasSuffix(".m4v") || lower.hasSuffix(".avi") {
+            print("  ✅ Detectado como VIDEO por extensión")
             return .video
         } else if lower.hasSuffix(".txt") || lower.hasSuffix(".md") || lower.hasSuffix(".rtf") || lower.hasSuffix(".json") || lower.hasSuffix(".xml") || lower.hasSuffix(".csv") || lower.hasSuffix(".html") || lower.hasSuffix(".htm") {
+            print("  ✅ Detectado como TEXTO por extensión")
             return .text
-        } else {
-            return .other
         }
+        
+        // Detectar por patrones de URL de video (para URLs externas sin extensión)
+        if urlLower.contains("youtube.com") || urlLower.contains("youtu.be") || 
+           urlLower.contains("vimeo.com") || urlLower.contains("dailymotion.com") ||
+           urlLower.contains("twitch.tv") || urlLower.contains("facebook.com/watch") ||
+           urlLower.contains("instagram.com/p/") || urlLower.contains("tiktok.com") ||
+           urlLower.contains("streamable.com") || urlLower.contains("gfycat.com") ||
+           urlLower.contains("giphy.com") || urlLower.contains("imgur.com") ||
+           urlLower.contains("video") || urlLower.contains("watch") ||
+           urlLower.contains("play") || urlLower.contains("embed") {
+            print("  ✅ Detectado como VIDEO por patrón de URL")
+            return .video
+        }
+        
+        // Detectar por patrones de URL de imagen
+        if urlLower.contains("image") || urlLower.contains("photo") || urlLower.contains("picture") ||
+           urlLower.contains("img") || urlLower.contains("gallery") {
+            print("  ✅ Detectado como IMAGEN por patrón de URL")
+            return .image
+        }
+        
+        // Detectar por patrones de URL de documento
+        if urlLower.contains("document") || urlLower.contains("doc") || urlLower.contains("file") ||
+           urlLower.contains("download") || urlLower.contains("attachment") {
+            print("  ✅ Detectado como TEXTO por patrón de URL")
+            return .text
+        }
+        
+        print("  ❌ Detectado como OTRO")
+        return .other
     }
 
     private var resolvedURL: URL? {
         // Usar la URL pre-firmada si está disponible, sino la original
         return presignedUrl ?? URL(string: url)
+    }
+    
+    private func isStreamingVideoURL(_ url: URL) -> Bool {
+        let urlString = url.absoluteString.lowercased()
+        
+        print("🔍 DEBUG - Verificando si es streaming video:")
+        print("  URL: \(urlString)")
+        
+        let isYouTube = urlString.contains("youtube.com") || urlString.contains("youtu.be")
+        let isVimeo = urlString.contains("vimeo.com")
+        let isOther = urlString.contains("dailymotion.com") ||
+                      urlString.contains("twitch.tv") ||
+                      urlString.contains("facebook.com/watch") ||
+                      urlString.contains("instagram.com/p/") ||
+                      urlString.contains("tiktok.com") ||
+                      urlString.contains("streamable.com") ||
+                      urlString.contains("gfycat.com") ||
+                      urlString.contains("giphy.com") ||
+                      urlString.contains("imgur.com") ||
+                      urlString.contains("embed") ||
+                      urlString.contains("player")
+        
+        let isStreaming = isYouTube || isVimeo || isOther
+        
+        print("  Es YouTube: \(isYouTube)")
+        print("  Es Vimeo: \(isVimeo)")
+        print("  Es otra plataforma: \(isOther)")
+        print("  Es streaming: \(isStreaming)")
+        
+        return isStreaming
     }
 
     var body: some View {
@@ -1715,13 +1870,55 @@ struct FileViewerView: View {
                             
                             case .video:
                                 if let u = resolvedURL {
-                                    VStack(spacing: 10) {
-                                        VideoPlayerView(url: u)
-                                            .frame(height: 500)
+                                    if isStreamingVideoURL(u) {
+                                        // Para URLs de streaming (YouTube, Vimeo, etc.)
+                                        VStack(spacing: 15) {
+                                            // WebView para reproducir el video
+                                            YouTubeWebView(url: u)
+                                                .frame(minHeight: 300, maxHeight: 400)
+                                                .cornerRadius(8)
+                                            
+                                            VStack(spacing: 8) {
+                                                Text("Video de Streaming")
+                                                    .font(.headline)
+                                                
+                                                Text("Este video está alojado en una plataforma externa")
+                                                    .font(.subheadline)
+                                                    .foregroundColor(.secondary)
+                                                    .multilineTextAlignment(.center)
+                                                
+                                                Text("Si no se reproduce, usa 'Abrir externamente'")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                                    .multilineTextAlignment(.center)
+                                            }
+                                            .padding()
+                                            .background(Color(.controlBackgroundColor))
                                             .cornerRadius(10)
-                                        Text("🎥 Reproductor de video")
+                                            
+                                            Button("Abrir en navegador") {
+                                                print("🌐 Abriendo URL en navegador: \(u)")
+                                                NSWorkspace.shared.open(u)
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                        }
+                                    } else {
+                                        // Para archivos de video directos (MP4, MOV, etc.)
+                                        VStack(spacing: 10) {
+                                            VideoPlayerView(url: u)
+                                                .frame(height: 500)
+                                                .cornerRadius(10)
+                                            Text("🎥 Reproductor de video")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                            
+                                            // Botón de fallback para abrir externamente si no funciona
+                                            Button("Si el video no se reproduce, haz clic aquí para abrirlo externamente") {
+                                                NSWorkspace.shared.open(u)
+                                            }
+                                            .buttonStyle(.bordered)
                                             .font(.caption)
-                                            .foregroundColor(.secondary)
+                                        }
                                     }
                                 } else {
                                     VStack {
@@ -1736,17 +1933,9 @@ struct FileViewerView: View {
                             
                             case .text:
                                 if let u = resolvedURL {
-                                    VStack(spacing: 10) {
-                                        Text("📄 Documento de texto")
-                                            .font(.headline)
-                                        Button {
-                                            openTextViewer(url: u)
-                                        } label: {
-                                            Label("Abrir en visor de texto", systemImage: "doc.text")
-                                        }
-                                        .buttonStyle(.borderedProminent)
-                                    }
-                                    .frame(minHeight: 200)
+                                    // Mostrar el documento directamente en el modal
+                                    TextPreviewView(url: u)
+                                        .frame(minHeight: 200)
                                 } else {
                                     Text("URL inválida")
                                         .frame(minHeight: 200)
@@ -1774,6 +1963,7 @@ struct FileViewerView: View {
             HStack {
                 Button("Descargar") { downloadFile() }
                     .buttonStyle(.bordered)
+                    .disabled(isStreaming) // No tiene sentido descargar URLs de streaming
 
                 Spacer()
 
@@ -1789,8 +1979,44 @@ struct FileViewerView: View {
         }
     }
     
+    private func isExternalURL(_ urlString: String) -> Bool {
+        let lower = urlString.lowercased()
+        
+        // Detectar URLs externas conocidas
+        return lower.contains("youtube.com") || 
+               lower.contains("youtu.be") ||
+               lower.contains("vimeo.com") ||
+               lower.contains("dailymotion.com") ||
+               lower.contains("twitch.tv") ||
+               lower.contains("facebook.com") ||
+               lower.contains("instagram.com") ||
+               lower.contains("tiktok.com") ||
+               lower.contains("streamable.com") ||
+               lower.contains("gfycat.com") ||
+               lower.contains("giphy.com") ||
+               lower.contains("imgur.com") ||
+               lower.contains("google.com") ||
+               lower.contains("amazon.com") ||
+               lower.contains("dropbox.com") ||
+               lower.contains("drive.google.com") ||
+               lower.contains("onedrive.live.com") ||
+               !lower.contains("s3") // Si no contiene 's3', probablemente es externa
+    }
+    
     private func loadPresignedUrl() {
         isLoadingPresigned = true
+        
+        // Verificar si es una URL externa (no de S3)
+        if isExternalURL(url) {
+            print("🌐 URL externa detectada, no se necesita URL pre-firmada: \(url)")
+            if let directUrl = URL(string: url) {
+                self.presignedUrl = directUrl
+            } else {
+                self.urlError = "URL inválida: \(url)"
+            }
+            self.isLoadingPresigned = false
+            return
+        }
         
         Task {@MainActor in
             do {
@@ -1798,12 +2024,23 @@ struct FileViewerView: View {
                 let s3Service = S3Service.shared
                 let signed = try await s3Service.generatePresignedUrl(for: url, expirationInSeconds: 3600)
                 
-                print("✅ URL pre-firmada recibida")
+                print("✅ URL pre-firmada recibida: \(signed)")
                 self.presignedUrl = signed
                 self.isLoadingPresigned = false
             } catch {
-                print("❌ Error: \(error)")
-                // Fallback a URL directa
+                print("❌ Error generando URL pre-firmada: \(error)")
+                
+                // Verificar si es un error de acceso específico
+                let errorMessage = error.localizedDescription
+                if errorMessage.contains("Access Denied") || errorMessage.contains("AccessDenied") {
+                    self.urlError = "Access Denied - El archivo está en un bucket privado"
+                } else if errorMessage.contains("NoSuchKey") || errorMessage.contains("NoSuchBucket") {
+                    self.urlError = "Archivo no encontrado en S3"
+                } else {
+                    self.urlError = "Error de acceso: \(errorMessage)"
+                }
+                
+                // Fallback a URL directa para intentar abrir externamente
                 if let directUrl = URL(string: url) {
                     self.presignedUrl = directUrl
                 } else {
@@ -1816,47 +2053,150 @@ struct FileViewerView: View {
 
     private var fileTypeIcon: String {
         let lower = fileName.lowercased()
+        let urlLower = url.lowercased()
+        
+        // Detectar por extensión de archivo
         if lower.hasSuffix(".png") || lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg") || lower.hasSuffix(".gif") || lower.hasSuffix(".webp") {
             return "photo"
         } else if lower.hasSuffix(".pdf") {
             return "doc.richtext"
         } else if lower.hasSuffix(".mp4") || lower.hasSuffix(".mov") || lower.hasSuffix(".m4v") || lower.hasSuffix(".avi") {
             return "play.rectangle"
-        } else {
-            return "doc"
         }
+        
+        // Detectar por patrones de URL de video (para URLs externas sin extensión)
+        if urlLower.contains("youtube.com") || urlLower.contains("youtu.be") || 
+           urlLower.contains("vimeo.com") || urlLower.contains("dailymotion.com") ||
+           urlLower.contains("twitch.tv") || urlLower.contains("facebook.com/watch") ||
+           urlLower.contains("instagram.com/p/") || urlLower.contains("tiktok.com") ||
+           urlLower.contains("streamable.com") || urlLower.contains("gfycat.com") ||
+           urlLower.contains("giphy.com") || urlLower.contains("imgur.com") ||
+           urlLower.contains("video") || urlLower.contains("watch") ||
+           urlLower.contains("play") || urlLower.contains("embed") {
+            return "play.rectangle"
+        }
+        
+        return "doc"
     }
 
     private var fileTypeDescription: String {
         let lower = fileName.lowercased()
+        let urlLower = url.lowercased()
+        
+        // Detectar por extensión de archivo
         if lower.hasSuffix(".png") || lower.hasSuffix(".jpg") || lower.hasSuffix(".jpeg") || lower.hasSuffix(".gif") || lower.hasSuffix(".webp") {
             return "Imagen"
         } else if lower.hasSuffix(".pdf") {
             return "PDF"
         } else if lower.hasSuffix(".mp4") || lower.hasSuffix(".mov") || lower.hasSuffix(".m4v") || lower.hasSuffix(".avi") {
             return "Archivo multimedia"
-        } else {
-            return "Documento"
         }
+        
+        // Detectar por patrones de URL de video (para URLs externas sin extensión)
+        if urlLower.contains("youtube.com") || urlLower.contains("youtu.be") || 
+           urlLower.contains("vimeo.com") || urlLower.contains("dailymotion.com") ||
+           urlLower.contains("twitch.tv") || urlLower.contains("facebook.com/watch") ||
+           urlLower.contains("instagram.com/p/") || urlLower.contains("tiktok.com") ||
+           urlLower.contains("streamable.com") || urlLower.contains("gfycat.com") ||
+           urlLower.contains("giphy.com") || urlLower.contains("imgur.com") ||
+           urlLower.contains("video") || urlLower.contains("watch") ||
+           urlLower.contains("play") || urlLower.contains("embed") {
+            return "Video de Streaming"
+        }
+        
+        return "Documento"
     }
 
     private func downloadFile() {
-        // Abrir URL directamente en el navegador
-        if let urlObj = URL(string: url) {
-            print("👁 Abriendo URL para descargar: \(url)")
-            NSWorkspace.shared.open(urlObj)
-        } else {
+        // Usar la URL resuelta (pre-firmada si está disponible)
+        let urlToDownload = resolvedURL ?? URL(string: url)
+        
+        print("📥 Iniciando descarga:")
+        print("  URL original: \(url)")
+        print("  URL resuelta: \(urlToDownload?.absoluteString ?? "nil")")
+        print("  fileName: \(fileName)")
+        
+        guard let urlObj = urlToDownload else {
             print("❌ URL inválida para descargar: \(url)")
+            return
+        }
+        
+        // Crear panel de guardado
+        let savePanel = NSSavePanel()
+
+        // Sugerir un nombre de archivo con extensión adecuada si falta
+        var suggestedName = fileName
+        if !suggestedName.contains(".") {
+            switch kind {
+            case .pdf:
+                suggestedName += ".pdf"
+            case .image:
+                suggestedName += ".png"
+            case .text:
+                suggestedName += ".txt"
+            case .video:
+                suggestedName += ".mp4"
+            case .other:
+                break
+            }
+        }
+        savePanel.nameFieldStringValue = suggestedName
+        // No forzar tipos: evita que aparezca .txt por defecto cuando no aplica
+        savePanel.canCreateDirectories = true
+        savePanel.isExtensionHidden = false
+        
+        savePanel.begin { response in
+            if response == .OK, let saveURL = savePanel.url {
+                // Descargar el archivo
+                Task {
+                    do {
+                        let (data, _) = try await URLSession.shared.data(from: urlObj)
+                        try data.write(to: saveURL)
+                        print("✅ Archivo descargado exitosamente: \(saveURL)")
+                    } catch {
+                        print("❌ Error descargando archivo: \(error)")
+                    }
+                }
+            }
         }
     }
 
     private func openExternally() {
-        // Abrir URL directamente en el navegador
-        if let urlObj = URL(string: url) {
-            print("👁 Abriendo URL externamente: \(url)")
-            NSWorkspace.shared.open(urlObj)
-        } else {
+        // Usar la URL resuelta (pre-firmada si está disponible)
+        let urlToOpen = resolvedURL ?? URL(string: url)
+        
+        print("👁 Abriendo archivo externamente:")
+        print("  URL original: \(url)")
+        print("  URL resuelta: \(urlToOpen?.absoluteString ?? "nil")")
+        print("  fileName: \(fileName)")
+        
+        guard let urlObj = urlToOpen else {
             print("❌ URL inválida para abrir: \(url)")
+            return
+        }
+        
+        // Para archivos MD, intentar abrir con la aplicación predeterminada
+        if fileName.lowercased().hasSuffix(".md") || fileName.lowercased().hasSuffix(".markdown") {
+            // Crear un archivo temporal y abrirlo
+            Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: urlObj)
+                    let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+                    try data.write(to: tempURL)
+                    
+                    // Abrir con la aplicación predeterminada
+                    NSWorkspace.shared.open(tempURL)
+                    print("✅ Archivo MD abierto con aplicación predeterminada")
+                } catch {
+                    print("❌ Error abriendo archivo MD: \(error)")
+                    // Fallback: abrir URL directamente
+                    NSWorkspace.shared.open(urlObj)
+                }
+            }
+        } else {
+            // Para otros tipos de archivo, abrir directamente
+            print("🌐 Abriendo URL directamente: \(urlObj)")
+            NSWorkspace.shared.open(urlObj)
         }
     }
     
@@ -1942,3 +2282,120 @@ struct CatalogDetailView_Previews: PreviewProvider {
         CatalogDetailView(catalog: catalog)
     }
 }
+
+// MARK: - YouTube WebView
+struct YouTubeWebView: NSViewRepresentable {
+    let url: URL
+    
+    func makeNSView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.navigationDelegate = context.coordinator
+        
+        // Configurar para YouTube
+        // webView.configuration.allowsInlineMediaPlayback = true
+        webView.configuration.mediaTypesRequiringUserActionForPlayback = []
+        
+        return webView
+    }
+    
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        let urlString = url.absoluteString
+        
+        // Convertir URL a ID y construir un iframe HTML (mejor compatibilidad de embed)
+        var videoId: String?
+        if urlString.contains("youtube.com/watch") || urlString.contains("youtu.be/") {
+            videoId = extractYouTubeVideoId(from: urlString)
+        }
+        
+        if let videoId {
+            let html = """
+            <html>
+              <head>
+                <meta name=\"viewport\" content=\"initial-scale=1.0, maximum-scale=1.0\" />
+                <style>body { margin:0; background:#111; } .wrap{position:fixed; inset:0;} iframe{width:100%; height:100%; border:0;}</style>
+              </head>
+              <body>
+                <div class=\"wrap\">
+                  <iframe src=\"https://www.youtube-nocookie.com/embed/\(videoId)?rel=0&modestbranding=1&playsinline=1\" allow=\"autoplay; encrypted-media; picture-in-picture\" allowfullscreen></iframe>
+                </div>
+              </body>
+            </html>
+            """
+            webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube-nocookie.com"))
+            print("🎥 Cargando iframe YouTube para ID: \(videoId)")
+        } else {
+            // Fallback: cargar la URL tal cual
+            if let u = URL(string: urlString) {
+                webView.load(URLRequest(url: u))
+            }
+        }
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator: NSObject, WKNavigationDelegate {
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            print("✅ YouTube WebView cargado correctamente")
+        }
+        
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            print("❌ Error cargando YouTube WebView: \(error)")
+        }
+    }
+    
+    private func extractYouTubeVideoId(from urlString: String) -> String? {
+        let url = urlString.lowercased()
+        
+        // Patrón para youtube.com/watch?v=VIDEO_ID
+        if let range = url.range(of: "v=") {
+            let startIndex = range.upperBound
+            let endIndex = url.index(startIndex, offsetBy: 11) // Los IDs de YouTube tienen 11 caracteres
+            if endIndex <= url.endIndex {
+                return String(url[startIndex..<endIndex])
+            }
+        }
+        
+        // Patrón para youtu.be/VIDEO_ID
+        if let range = url.range(of: "youtu.be/") {
+            let startIndex = range.upperBound
+            let endIndex = url.index(startIndex, offsetBy: 11)
+            if endIndex <= url.endIndex {
+                return String(url[startIndex..<endIndex])
+            }
+        }
+        
+        return nil
+    }
+}
+
+   // MARK: - Previsualizador de texto en modal
+   struct TextPreviewView: View {
+       let url: URL
+       @State private var text: String = "Cargando..."
+
+       var body: some View {
+           ScrollView {
+               Text(text)
+                   .font(.body)
+                   .padding()
+                   .frame(maxWidth: .infinity, alignment: .leading)
+           }
+           .onAppear { loadText() }
+           .frame(minWidth: 400, minHeight: 200)
+       }
+       private func loadText() {
+           DispatchQueue.global(qos: .userInitiated).async {
+               if let content = try? String(contentsOf: url, encoding: .utf8) {
+                   DispatchQueue.main.async {
+                       text = content
+                   }
+               } else {
+                   DispatchQueue.main.async {
+                       text = "No se pudo cargar el archivo de texto."
+                   }
+               }
+           }
+       }
+   }

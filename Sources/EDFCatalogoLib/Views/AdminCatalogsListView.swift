@@ -231,96 +231,94 @@ struct AdminCatalogDetailView: View {
     @State private var editingDescription = ""
     
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Detalles del Catálogo")
-                            .font(.title2)
-                            .fontWeight(.bold)
-                        Text(catalog.name)
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                    }
-                    Spacer()
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.gray)
-                    }
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Detalles del Catálogo")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    Text(catalog.name)
+                        .font(.caption)
+                        .foregroundColor(.gray)
                 }
-                .padding()
-                .background(Color.white)
-                .border(Color.gray.opacity(0.3), width: 1)
+                Spacer()
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.gray)
+                }
+            }
+            .padding()
+            .background(Color.white)
+            .border(Color.gray.opacity(0.3), width: 1)
                 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        // Icon
-                        Image(systemName: "books.vertical.fill")
-                            .font(.system(size: 48))
-                            .foregroundColor(.blue)
-                        
-                        // Tabs
-                        Picker("Tab", selection: $isEditing) {
-                            Text("Ver").tag(false)
-                            Text("Editar").tag(true)
+            ScrollView {
+                VStack(spacing: 16) {
+                    // Icon
+                    Image(systemName: "books.vertical.fill")
+                        .font(.system(size: 48))
+                        .foregroundColor(.blue)
+                    
+                    // Tabs
+                    Picker("Tab", selection: $isEditing) {
+                        Text("Ver").tag(false)
+                        Text("Editar").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding()
+                    
+                    if isEditing {
+                        VStack(spacing: 16) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Nombre", systemImage: "textformat")
+                                    .fontWeight(.semibold)
+                                TextField("Nombre del catálogo", text: $editingName)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            .padding()
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(8)
+                            
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Descripción", systemImage: "text.justify")
+                                    .fontWeight(.semibold)
+                                TextField("Descripción", text: $editingDescription)
+                                    .textFieldStyle(.roundedBorder)
+                            }
+                            .padding()
+                            .background(Color.gray.opacity(0.1))
+                            .cornerRadius(8)
+                            
+                            HStack(spacing: 12) {
+                                Button(action: { isEditing = false }) {
+                                    Text("Cancelar")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                
+                                Button(action: { isEditing = false }) {
+                                    Text("Guardar")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                            }
                         }
-                        .pickerStyle(.segmented)
                         .padding()
-                        
-                        if isEditing {
-                            VStack(spacing: 16) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Label("Nombre", systemImage: "textformat")
-                                        .fontWeight(.semibold)
-                                    TextField("Nombre del catálogo", text: $editingName)
-                                        .textFieldStyle(.roundedBorder)
-                                }
-                                .padding()
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(8)
-                                
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Label("Descripción", systemImage: "text.justify")
-                                        .fontWeight(.semibold)
-                                    TextField("Descripción", text: $editingDescription)
-                                        .textFieldStyle(.roundedBorder)
-                                }
-                                .padding()
-                                .background(Color.gray.opacity(0.1))
-                                .cornerRadius(8)
-                                
-                                HStack(spacing: 12) {
-                                    Button(action: { isEditing = false }) {
-                                        Text("Cancelar")
-                                            .frame(maxWidth: .infinity)
-                                    }
-                                    .buttonStyle(.bordered)
-                                    
-                                    Button(action: { isEditing = false }) {
-                                        Text("Guardar")
-                                            .frame(maxWidth: .infinity)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                }
-                            }
-                            .padding()
-                        } else {
-                            VStack(spacing: 16) {
-                                CatalogInfoRowView(label: "Nombre", value: catalog.name)
-                                CatalogInfoRowView(label: "Descripción", value: catalog.description)
-                                CatalogInfoRowView(label: "Elementos", value: "\(catalog.itemCount)")
-                                CatalogInfoRowView(label: "ID", value: catalog.id)
-                            }
-                            .padding()
+                    } else {
+                        VStack(spacing: 16) {
+                            CatalogInfoRowView(label: "Nombre", value: catalog.name)
+                            CatalogInfoRowView(label: "Descripción", value: catalog.description)
+                            CatalogInfoRowView(label: "Elementos", value: "\(catalog.itemCount)")
+                            CatalogInfoRowView(label: "ID", value: catalog.id)
                         }
+                        .padding()
                     }
                 }
             }
-            .onAppear {
-                editingName = catalog.name
-                editingDescription = catalog.description
-            }
+        }
+        .onAppear {
+            editingName = catalog.name
+            editingDescription = catalog.description
         }
     }
 }

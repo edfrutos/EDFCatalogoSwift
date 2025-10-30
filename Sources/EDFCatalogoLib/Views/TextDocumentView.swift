@@ -63,17 +63,40 @@ struct TextDocumentView: View {
             } else if viewModel.isMarkdown {
                 // Markdown renderizado
                 ScrollView {
-                    MarkdownTextView(attributedString: viewModel.attributedContent)
-                        .padding()
+                    Group {
+                        if let attributedString = try? AttributedString(markdown: viewModel.content) {
+                            Text(attributedString)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        } else {
+                            Text(viewModel.content)
+                                .font(.system(.body, design: .monospaced))
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding()
+                        }
+                    }
                 }
             } else {
                 // Texto plano
-                ScrollView {
-                    Text(viewModel.content)
-                        .font(.system(.body, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        Text(viewModel.content)
+                            .font(.system(.body, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                            .id("text-content")
+                    }
+                    .onAppear {
+                        // Asegurar que el scroll esté en la parte superior
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                proxy.scrollTo("text-content", anchor: .top)
+                            }
+                        }
+                    }
                 }
             }
             
@@ -191,47 +214,15 @@ class TextDocumentViewModel: ObservableObject {
     }
     
     private func renderMarkdown(_ markdown: String) -> NSAttributedString {
-        // Renderizado básico de Markdown
-        let mutableAttr = NSMutableAttributedString()
-        let lines = markdown.components(separatedBy: .newlines)
-        
-        for line in lines {
-            var attributedLine = NSMutableAttributedString(string: line + "\n")
-            
-            // Headers
-            if line.hasPrefix("# ") {
-                attributedLine = NSMutableAttributedString(string: String(line.dropFirst(2)) + "\n")
-                attributedLine.addAttribute(.font, value: NSFont.systemFont(ofSize: 24, weight: .bold), range: NSRange(location: 0, length: attributedLine.length))
-            } else if line.hasPrefix("## ") {
-                attributedLine = NSMutableAttributedString(string: String(line.dropFirst(3)) + "\n")
-                attributedLine.addAttribute(.font, value: NSFont.systemFont(ofSize: 20, weight: .bold), range: NSRange(location: 0, length: attributedLine.length))
-            } else if line.hasPrefix("### ") {
-                attributedLine = NSMutableAttributedString(string: String(line.dropFirst(4)) + "\n")
-                attributedLine.addAttribute(.font, value: NSFont.systemFont(ofSize: 16, weight: .bold), range: NSRange(location: 0, length: attributedLine.length))
-            }
-            // Bold
-            else if line.contains("**") {
-                let parts = line.components(separatedBy: "**")
-                attributedLine = NSMutableAttributedString()
-                for (index, part) in parts.enumerated() {
-                    let attr = NSMutableAttributedString(string: part)
-                    if index % 2 == 1 {
-                        attr.addAttribute(.font, value: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize), range: NSRange(location: 0, length: attr.length))
-                    }
-                    attributedLine.append(attr)
-                }
-                attributedLine.append(NSAttributedString(string: "\n"))
-            }
-            // Code
-            else if line.hasPrefix("```") || line.hasPrefix("    ") {
-                attributedLine.addAttribute(.font, value: NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular), range: NSRange(location: 0, length: attributedLine.length))
-                attributedLine.addAttribute(.backgroundColor, value: NSColor.lightGray.withAlphaComponent(0.1), range: NSRange(location: 0, length: attributedLine.length))
-            }
-            
-            mutableAttr.append(attributedLine)
+        // Usar el renderizado nativo de SwiftUI para Markdown
+        do {
+            let attributedString = try AttributedString(markdown: markdown)
+            return NSAttributedString(attributedString)
+        } catch {
+            // Fallback: mostrar como texto plano si falla el renderizado
+            print("⚠️ Error renderizando Markdown: \(error)")
+            return NSAttributedString(string: markdown)
         }
-        
-        return mutableAttr
     }
     
     private func calculateStats() {
@@ -271,13 +262,25 @@ struct MarkdownTextView: NSViewRepresentable {
         textView.isEditable = false
         textView.isSelectable = true
         textView.backgroundColor = .clear
-        textView.textContainerInset = CGSize(width: 0, height: 0)
+        textView.textContainerInset = CGSize(width: 8, height: 8)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+        textView.textContainer?.containerSize = CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
         return textView
     }
     
     func updateNSView(_ nsView: NSTextView, context: Context) {
         if nsView.attributedString() != attributedString {
             nsView.textStorage?.setAttributedString(attributedString)
+            // Asegurar que el scroll esté en la parte superior
+            DispatchQueue.main.async {
+                nsView.scrollToBeginningOfDocument(nil)
+                nsView.needsDisplay = true
+            }
         }
     }
 }

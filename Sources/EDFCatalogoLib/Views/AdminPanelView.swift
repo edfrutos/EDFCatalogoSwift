@@ -220,93 +220,57 @@ struct AdminSettingsView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
                     Label("Información del Administrador", systemImage: "person.fill")
+                        .font(.headline)
                         .fontWeight(.semibold)
                     
-                    VStack(spacing: 12) {
-                        InfoSettingRowView(label: "Email", value: currentUser.email)
-                        InfoSettingRowView(label: "Usuario", value: currentUser.username)
-                        InfoSettingRowView(label: "Nombre", value: currentUser.name)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Email")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .fontWeight(.semibold)
+                        Text(currentUser.email)
+                            .font(.body)
                     }
-                }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(8)
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Configuración del Sistema", systemImage: "gear")
-                        .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
                     
-                    VStack(spacing: 12) {
-                        SettingToggleRowView(title: "Mantenimiento", isOn: false)
-                        SettingToggleRowView(title: "Modo Seguro", isOn: true)
-                        SettingToggleRowView(title: "Logs Detallados", isOn: false)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Usuario")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .fontWeight(.semibold)
+                        Text(currentUser.username)
+                            .font(.body)
                     }
-                }
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(8)
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Backup", systemImage: "externaldrive.badge.checkmark")
-                        .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
                     
-                    VStack(spacing: 12) {
-                        Button(action: {}) {
-                            Label("Hacer Backup Ahora", systemImage: "square.and.arrow.down")
-                                .frame(maxWidth: .infinity, alignment: .center)
-                        }
-                        .buttonStyle(.borderedProminent)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Nombre")
+                            .font(.caption)
+                            .foregroundColor(.gray)
+                            .fontWeight(.semibold)
+                        Text(currentUser.name)
+                            .font(.body)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
                 }
                 .padding()
-                .background(Color.gray.opacity(0.1))
+                .background(Color.gray.opacity(0.05))
                 .cornerRadius(8)
                 
                 Spacer()
             }
             .padding()
         }
-    }
-}
-
-// MARK: - Info Setting Row View
-
-struct InfoSettingRowView: View {
-    let label: String
-    let value: String
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.caption)
-                .foregroundColor(.gray)
-            Text(value)
-                .font(.subheadline)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(Color.white)
-        .cornerRadius(6)
-    }
-}
-
-// MARK: - Setting Toggle Row View
-
-struct SettingToggleRowView: View {
-    let title: String
-    @State var isOn: Bool
-    
-    var body: some View {
-        HStack {
-            Text(title)
-                .font(.subheadline)
-            Spacer()
-            Toggle("", isOn: $isOn)
-        }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(6)
     }
 }

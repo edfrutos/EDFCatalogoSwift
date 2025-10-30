@@ -30,21 +30,24 @@ Aplicación nativa para macOS que permite gestionar catálogos de tablas con int
 ### Opción 2: Compilar desde Código Fuente
 
 1. Clona el repositorio:
-   ```bash
-   git clone https://github.com/edfrutos/EDFCatalogoSwift.git
-   cd EDFCatalogoSwift
-   ```
+
+```bash
+git clone https://github.com/edfrutos/EDFCatalogoSwift.git
+cd EDFCatalogoSwift
+```
 
 2. Crea tu archivo `.env` basado en `.env.example`:
-   ```bash
-   cp .env.example .env
-   # Edita .env con tus credenciales
-   ```
+
+```bash
+cp .env.example .env
+# Edita .env con tus credenciales
+```
 
 3. Compila y empaqueta la aplicación:
-   ```bash
-   ./build_app.sh
-   ```
+
+```bash
+./build.sh
+```
 
 4. La aplicación estará en `bin/EDF Catálogo de Tablas.app`
 
@@ -78,7 +81,7 @@ USE_S3=true
 
 ## 📁 Estructura del Proyecto
 
-```
+```ini
 EDFCatalogoSwift/
 ├── Sources/
 │   ├── EDFCatalogoSwift/        # Punto de entrada (@main)
@@ -154,6 +157,7 @@ Este proyecto está licenciado bajo la licencia MIT. Consulta el archivo LICENSE
 ## 👤 Autor
 
 **Eduardo de Frutos**
+
 - GitHub: [@edfrutos](https://github.com/edfrutos)
 
 ## 🙏 Agradecimientos
