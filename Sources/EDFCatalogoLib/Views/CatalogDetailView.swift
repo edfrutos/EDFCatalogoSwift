@@ -980,7 +980,7 @@ struct AddRowView: View {
                         title: "Imágenes adicionales",
                         fileType: .image,
                         urls: $additionalImages,
-                        onSelectFile: { selectFile(for: .image) },
+                        onSelectFile: { selectAndUploadAdditionalFile(for: .image) },
                         isUploading: isUploadingImage
                     )
                     
@@ -991,7 +991,7 @@ struct AddRowView: View {
                         title: "Documentos adicionales",
                         fileType: .document,
                         urls: $additionalDocuments,
-                        onSelectFile: { selectFile(for: .document) },
+                        onSelectFile: { selectAndUploadAdditionalFile(for: .document) },
                         isUploading: isUploadingDocument
                     )
                     
@@ -1002,7 +1002,7 @@ struct AddRowView: View {
                         title: "Archivos multimedia adicionales",
                         fileType: .multimedia,
                         urls: $additionalMultimedia,
-                        onSelectFile: { selectFile(for: .multimedia) },
+                        onSelectFile: { selectAndUploadAdditionalFile(for: .multimedia) },
                         isUploading: isUploadingMultimedia
                     )
                 }
@@ -1116,6 +1116,69 @@ struct AddRowView: View {
         }
     }
     
+    // Seleccionar y subir archivo ADICIONAL, agregando su URL al array correspondiente
+    private func selectAndUploadAdditionalFile(for fileType: FileType) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        
+        switch fileType {
+        case .image:
+            panel.allowedContentTypes = [.png, .jpeg, .gif, .bmp, .tiff, .heic]
+        case .document, .pdf:
+            panel.allowedContentTypes = [.plainText, .rtf, .html, .pdf]
+        case .multimedia:
+            panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie, .avi, .mpeg, .mp3, .wav]
+        }
+        
+        panel.begin { response in
+            guard response == .OK, let fileURL = panel.url else { return }
+            Task { @MainActor in
+                guard let userId = authViewModel.currentUser?.id else { return }
+                do {
+                    switch fileType {
+                    case .image:
+                        isUploadingImage = true
+                        let uploaded = try await S3Service.shared.uploadFile(
+                            fileUrl: fileURL,
+                            userId: userId,
+                            catalogId: catalogId,
+                            fileType: .image
+                        )
+                        additionalImages.append(uploaded)
+                        isUploadingImage = false
+                    case .document, .pdf:
+                        isUploadingDocument = true
+                        let uploaded = try await S3Service.shared.uploadFile(
+                            fileUrl: fileURL,
+                            userId: userId,
+                            catalogId: catalogId,
+                            fileType: .document
+                        )
+                        additionalDocuments.append(uploaded)
+                        isUploadingDocument = false
+                    case .multimedia:
+                        isUploadingMultimedia = true
+                        let uploaded = try await S3Service.shared.uploadFile(
+                            fileUrl: fileURL,
+                            userId: userId,
+                            catalogId: catalogId,
+                            fileType: .multimedia
+                        )
+                        additionalMultimedia.append(uploaded)
+                        isUploadingMultimedia = false
+                    }
+                } catch {
+                    uploadError = "Error subiendo archivo adicional: \(error.localizedDescription)"
+                    isUploadingImage = false
+                    isUploadingDocument = false
+                    isUploadingMultimedia = false
+                }
+            }
+        }
+    }
+    
     private func uploadFilesAndSave() async {
         // Validar que hay datos
         guard hasRequiredData else {
@@ -1133,10 +1196,35 @@ struct AddRowView: View {
         dateFormatter.locale = Locale(identifier: "es_ES")
         data["_fecha"] = dateFormatter.string(from: selectedDate)
         
+        // Normalizar URLs: si el usuario pegó varias URLs en el mismo campo, separarlas y distribuirlas
+        func splitUrls(_ value: String) -> [String] {
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return [] }
+            // Separar por espacios, saltos de línea o repeticiones de esquema http(s)
+            var parts: [String] = []
+            var buffer = trimmed
+            // Insertar separadores antes de cada "http" excepto el inicial
+            buffer = buffer.replacingOccurrences(of: "http://", with: "\nhttp://")
+            buffer = buffer.replacingOccurrences(of: "https://", with: "\nhttps://")
+            for token in buffer.components(separatedBy: CharacterSet.whitespacesAndNewlines) {
+                let t = token.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.hasPrefix("http://") || t.hasPrefix("https://") { parts.append(t) }
+            }
+            return parts
+        }
+
+        let imageUrls = splitUrls(imageUrl)
+        let documentUrls = splitUrls(documentUrl)
+        let multimediaUrls = splitUrls(multimediaUrl)
+
         // Subir archivos si están seleccionados
-        var finalImageUrl = imageUrl
-        var finalDocumentUrl = documentUrl
-        var finalMultimediaUrl = multimediaUrl
+        var finalImageUrl = imageUrls.first ?? ""
+        var finalDocumentUrl = documentUrls.first ?? ""
+        var finalMultimediaUrl = multimediaUrls.first ?? ""
+        // Las restantes van a adicionales
+        if imageUrls.count > 1 { additionalImages.append(contentsOf: imageUrls.dropFirst()) }
+        if documentUrls.count > 1 { additionalDocuments.append(contentsOf: documentUrls.dropFirst()) }
+        if multimediaUrls.count > 1 { additionalMultimedia.append(contentsOf: multimediaUrls.dropFirst()) }
         
         // Obtener userId del usuario autenticado
         guard let userId = authViewModel.currentUser?.id else {
@@ -1148,12 +1236,17 @@ struct AddRowView: View {
         if let imageFile = selectedImageFile {
             isUploadingImage = true
             do {
-                finalImageUrl = try await S3Service.shared.uploadFile(
+                let uploaded = try await S3Service.shared.uploadFile(
                     fileUrl: imageFile,
                     userId: userId,
                     catalogId: catalogId,
                     fileType: .image
                 )
+                if finalImageUrl.isEmpty {
+                    finalImageUrl = uploaded
+                } else {
+                    additionalImages.append(uploaded)
+                }
             } catch {
                 uploadError = "Error al subir imagen: \(error.localizedDescription)"
                 isUploadingImage = false
@@ -1166,12 +1259,17 @@ struct AddRowView: View {
         if let documentFile = selectedDocumentFile {
             isUploadingDocument = true
             do {
-                finalDocumentUrl = try await S3Service.shared.uploadFile(
+                let uploaded = try await S3Service.shared.uploadFile(
                     fileUrl: documentFile,
                     userId: userId,
                     catalogId: catalogId,
                     fileType: .document
                 )
+                if finalDocumentUrl.isEmpty {
+                    finalDocumentUrl = uploaded
+                } else {
+                    additionalDocuments.append(uploaded)
+                }
             } catch {
                 uploadError = "Error al subir documento: \(error.localizedDescription)"
                 isUploadingDocument = false
@@ -1184,18 +1282,34 @@ struct AddRowView: View {
         if let multimediaFile = selectedMultimediaFile {
             isUploadingMultimedia = true
             do {
-                finalMultimediaUrl = try await S3Service.shared.uploadFile(
+                let uploaded = try await S3Service.shared.uploadFile(
                     fileUrl: multimediaFile,
                     userId: userId,
                     catalogId: catalogId,
                     fileType: .multimedia
                 )
+                if finalMultimediaUrl.isEmpty {
+                    finalMultimediaUrl = uploaded
+                } else {
+                    additionalMultimedia.append(uploaded)
+                }
             } catch {
                 uploadError = "Error al subir multimedia: \(error.localizedDescription)"
                 isUploadingMultimedia = false
                 return
             }
             isUploadingMultimedia = false
+        }
+
+        // Asegurar que URL externas también se agreguen sin sobrescribir
+        if !imageUrls.isEmpty && !finalImageUrl.isEmpty && imageUrls.first != finalImageUrl {
+            additionalImages.append(contentsOf: imageUrls)
+        }
+        if !documentUrls.isEmpty && !finalDocumentUrl.isEmpty && documentUrls.first != finalDocumentUrl {
+            additionalDocuments.append(contentsOf: documentUrls)
+        }
+        if !multimediaUrls.isEmpty && !finalMultimediaUrl.isEmpty && multimediaUrls.first != finalMultimediaUrl {
+            additionalMultimedia.append(contentsOf: multimediaUrls)
         }
         
         // Crear objeto RowFiles con las URLs finales
@@ -1423,7 +1537,7 @@ struct EditRowView: View {
                         title: "Imágenes adicionales",
                         fileType: .image,
                         urls: $additionalImages,
-                        onSelectFile: { selectFile(for: .image) },
+                        onSelectFile: { selectAndUploadAdditionalFile(for: .image) },
                         isUploading: isUploadingImage
                     )
                     
@@ -1434,7 +1548,7 @@ struct EditRowView: View {
                         title: "Documentos adicionales",
                         fileType: .document,
                         urls: $additionalDocuments,
-                        onSelectFile: { selectFile(for: .document) },
+                        onSelectFile: { selectAndUploadAdditionalFile(for: .document) },
                         isUploading: isUploadingDocument
                     )
                     
@@ -1445,7 +1559,7 @@ struct EditRowView: View {
                         title: "Archivos multimedia adicionales",
                         fileType: .multimedia,
                         urls: $additionalMultimedia,
-                        onSelectFile: { selectFile(for: .multimedia) },
+                        onSelectFile: { selectAndUploadAdditionalFile(for: .multimedia) },
                         isUploading: isUploadingMultimedia
                     )
                 }
@@ -1532,6 +1646,69 @@ struct EditRowView: View {
                 uploadError = nil
             } catch {
                 uploadError = "Error al validar el archivo: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    // Selecciona un archivo local, lo sube a S3 y AGREGA la URL al array correspondiente
+    private func selectAndUploadAdditionalFile(for fileType: FileType) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        
+        switch fileType {
+        case .image:
+            panel.allowedContentTypes = [.png, .jpeg, .gif, .bmp, .tiff, .heic]
+        case .document, .pdf:
+            panel.allowedContentTypes = [.plainText, .rtf, .html, .pdf]
+        case .multimedia:
+            panel.allowedContentTypes = [.mpeg4Movie, .quickTimeMovie, .avi, .mpeg, .mp3, .wav]
+        }
+        
+        panel.begin { response in
+            guard response == .OK, let fileURL = panel.url else { return }
+            Task { @MainActor in
+                guard let userId = authViewModel.currentUser?.id else { return }
+                do {
+                    switch fileType {
+                    case .image:
+                        isUploadingImage = true
+                        let uploaded = try await S3Service.shared.uploadFile(
+                            fileUrl: fileURL,
+                            userId: userId,
+                            catalogId: catalogId,
+                            fileType: .image
+                        )
+                        additionalImages.append(uploaded)
+                        isUploadingImage = false
+                    case .document, .pdf:
+                        isUploadingDocument = true
+                        let uploaded = try await S3Service.shared.uploadFile(
+                            fileUrl: fileURL,
+                            userId: userId,
+                            catalogId: catalogId,
+                            fileType: .document
+                        )
+                        additionalDocuments.append(uploaded)
+                        isUploadingDocument = false
+                    case .multimedia:
+                        isUploadingMultimedia = true
+                        let uploaded = try await S3Service.shared.uploadFile(
+                            fileUrl: fileURL,
+                            userId: userId,
+                            catalogId: catalogId,
+                            fileType: .multimedia
+                        )
+                        additionalMultimedia.append(uploaded)
+                        isUploadingMultimedia = false
+                    }
+                } catch {
+                    uploadError = "Error subiendo archivo adicional: \(error.localizedDescription)"
+                    isUploadingImage = false
+                    isUploadingDocument = false
+                    isUploadingMultimedia = false
+                }
             }
         }
     }
@@ -2301,11 +2478,8 @@ struct YouTubeWebView: NSViewRepresentable {
     func updateNSView(_ webView: WKWebView, context: Context) {
         let urlString = url.absoluteString
         
-        // Convertir URL a ID y construir un iframe HTML (mejor compatibilidad de embed)
-        var videoId: String?
-        if urlString.contains("youtube.com/watch") || urlString.contains("youtu.be/") {
-            videoId = extractYouTubeVideoId(from: urlString)
-        }
+        // Convertir URL a ID (incluye YouTube Shorts) y construir un iframe HTML
+        let videoId: String? = extractYouTubeVideoId(from: urlString)
         
         if let videoId {
             let html = """
@@ -2346,23 +2520,33 @@ struct YouTubeWebView: NSViewRepresentable {
     }
     
     private func extractYouTubeVideoId(from urlString: String) -> String? {
-        let url = urlString.lowercased()
+        // Usar URLComponents para no perder mayúsculas del ID
+        guard let url = URL(string: urlString) else { return nil }
+        let host = (url.host ?? "").lowercased()
+        let path = url.path
         
-        // Patrón para youtube.com/watch?v=VIDEO_ID
-        if let range = url.range(of: "v=") {
-            let startIndex = range.upperBound
-            let endIndex = url.index(startIndex, offsetBy: 11) // Los IDs de YouTube tienen 11 caracteres
-            if endIndex <= url.endIndex {
-                return String(url[startIndex..<endIndex])
+        // Caso 1: youtube.com/watch?v=ID
+        if host.contains("youtube.com"), let components = URLComponents(url: url, resolvingAgainstBaseURL: false) {
+            if let id = components.queryItems?.first(where: { $0.name == "v" })?.value, !id.isEmpty {
+                return String(id.prefix(11))
             }
         }
         
-        // Patrón para youtu.be/VIDEO_ID
-        if let range = url.range(of: "youtu.be/") {
-            let startIndex = range.upperBound
-            let endIndex = url.index(startIndex, offsetBy: 11)
-            if endIndex <= url.endIndex {
-                return String(url[startIndex..<endIndex])
+        // Caso 2: youtu.be/ID
+        if host.contains("youtu.be") {
+            let segments = path.split(separator: "/")
+            if let first = segments.first, !first.isEmpty {
+                return String(first.prefix(11))
+            }
+        }
+        
+        // Caso 3: youtube.com/shorts/ID
+        if host.contains("youtube.com") && path.lowercased().contains("/shorts/") {
+            let segments = path.split(separator: "/")
+            if let index = segments.firstIndex(where: { $0.lowercased() == "shorts" }),
+               segments.indices.contains(segments.index(after: index)) {
+                let id = segments[segments.index(after: index)]
+                if !id.isEmpty { return String(id.prefix(11)) }
             }
         }
         
