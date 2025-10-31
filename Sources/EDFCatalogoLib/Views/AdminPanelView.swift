@@ -64,7 +64,6 @@ public struct AdminPanelView: View {
                     Label("Usuarios", systemImage: "person.3.fill").tag(AdminTab.users)
                     Label("Catálogos", systemImage: "books.vertical.fill").tag(AdminTab.catalogs)
                     Label("Estadísticas", systemImage: "chart.bar.fill").tag(AdminTab.statistics)
-                    Label("Configuración", systemImage: "gear").tag(AdminTab.settings)
                 }
                 .pickerStyle(.segmented)
                 .padding()
@@ -80,9 +79,7 @@ public struct AdminPanelView: View {
                         AdminCatalogsListView()
                             .onAppear { NSLog("🧭 DEBUG Tab: render Catálogos") }
                     case .statistics:
-                        AdminStatisticsView(currentUser: currentUser)
-                    case .settings:
-                        AdminSettingsView(currentUser: currentUser)
+                        AdminStatisticsView(viewModel: viewModel)
                     }
                 }
             }
@@ -100,7 +97,6 @@ public enum AdminTab: CaseIterable {
     case users
     case catalogs
     case statistics
-    case settings
     
     var label: String {
         switch self {
@@ -110,8 +106,6 @@ public enum AdminTab: CaseIterable {
             return "Catálogos"
         case .statistics:
             return "Estadísticas"
-        case .settings:
-            return "Configuración"
         }
     }
     
@@ -123,8 +117,6 @@ public enum AdminTab: CaseIterable {
             return "books.vertical.fill"
         case .statistics:
             return "chart.bar.fill"
-        case .settings:
-            return "gear"
         }
     }
 }
@@ -132,52 +124,117 @@ public enum AdminTab: CaseIterable {
 // MARK: - Admin Statistics View
 
 struct AdminStatisticsView: View {
-    let currentUser: User
+    @ObservedObject var viewModel: AdminViewModel
+    @EnvironmentObject private var authViewModel: AuthViewModel
+    
+    @State private var catalogs: [Catalog] = []
+    @State private var isLoading = false
+    @State private var totalRows = 0
+    
+    var totalUsers: Int { viewModel.users.count }
+    var activeUsers: Int { viewModel.users.filter { $0.isActive ?? true }.count }
+    var adminUsers: Int { viewModel.users.filter { $0.isAdmin }.count }
+    var totalCatalogs: Int { catalogs.count }
     
     var body: some View {
         VStack(spacing: 16) {
             VStack(spacing: 12) {
                 HStack {
-                    Text("Estadísticas")
+                    Text("Estadísticas Generales")
                         .font(.headline)
+                        .fontWeight(.bold)
                     Spacer()
+                    Button(action: {
+                        Task {
+                            await loadStatistics()
+                        }
+                    }) {
+                        Image(systemName: "arrow.clockwise")
+                            .foregroundColor(.blue)
+                    }
+                    .disabled(isLoading)
                 }
                 
-                ScrollView {
-                    VStack(spacing: 12) {
-                        StatisticCardView(
-                            title: "Total de Usuarios",
-                            value: "0",
-                            icon: "person.fill",
-                            color: .blue
-                        )
-                        
-                        StatisticCardView(
-                            title: "Usuarios Activos",
-                            value: "0",
-                            icon: "checkmark.circle.fill",
-                            color: .green
-                        )
-                        
-                        StatisticCardView(
-                            title: "Administradores",
-                            value: "1",
-                            icon: "crown.fill",
-                            color: .orange
-                        )
-                        
-                        StatisticCardView(
-                            title: "Catálogos",
-                            value: "0",
-                            icon: "books.vertical.fill",
-                            color: .purple
-                        )
+                if isLoading {
+                    ProgressView("Cargando estadísticas...")
+                        .frame(maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        VStack(spacing: 12) {
+                            StatisticCardView(
+                                title: "Total de Usuarios",
+                                value: String(totalUsers),
+                                icon: "person.fill",
+                                color: .blue
+                            )
+                            
+                            StatisticCardView(
+                                title: "Usuarios Activos",
+                                value: String(activeUsers),
+                                icon: "checkmark.circle.fill",
+                                color: .green
+                            )
+                            
+                            StatisticCardView(
+                                title: "Usuarios Inactivos",
+                                value: String(totalUsers - activeUsers),
+                                icon: "circle.slash.fill",
+                                color: .red
+                            )
+                            
+                            StatisticCardView(
+                                title: "Administradores",
+                                value: String(adminUsers),
+                                icon: "crown.fill",
+                                color: .orange
+                            )
+                            
+                            StatisticCardView(
+                                title: "Total de Catálogos",
+                                value: String(totalCatalogs),
+                                icon: "books.vertical.fill",
+                                color: .purple
+                            )
+                            
+                            StatisticCardView(
+                                title: "Total de Filas",
+                                value: String(totalRows),
+                                icon: "list.bullet.rectangle.fill",
+                                color: .indigo
+                            )
+                        }
+                        .padding()
                     }
-                    .padding()
                 }
             }
         }
         .padding()
+        .task {
+            await loadStatistics()
+        }
+    }
+    
+    private func loadStatistics() async {
+        isLoading = true
+        defer { isLoading = false }
+        
+        // Cargar usuarios si no están cargados
+        if viewModel.users.isEmpty {
+            await viewModel.loadUsers()
+        }
+        
+        // Cargar catálogos
+        if let user = authViewModel.currentUser {
+            do {
+                let mongo = MongoService.shared
+                catalogs = try await mongo.getCatalogs(userId: user.id, isAdmin: user.isAdmin)
+                
+                // Calcular total de filas
+                totalRows = catalogs.reduce(0) { $0 + $1.rows.count }
+            } catch {
+                print("⚠️ Error cargando catálogos para estadísticas: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
@@ -215,65 +272,3 @@ struct StatisticCardView: View {
     }
 }
 
-// MARK: - Admin Settings View
-
-struct AdminSettingsView: View {
-    let currentUser: User
-    
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Información del Administrador", systemImage: "person.fill")
-                        .font(.headline)
-                        .fontWeight(.semibold)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Email")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .fontWeight(.semibold)
-                        Text(currentUser.email)
-                            .font(.body)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Usuario")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .fontWeight(.semibold)
-                        Text(currentUser.username)
-                            .font(.body)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
-                    
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Nombre")
-                            .font(.caption)
-                            .foregroundColor(.gray)
-                            .fontWeight(.semibold)
-                        Text(currentUser.name)
-                            .font(.body)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding()
-                    .background(Color.gray.opacity(0.1))
-                    .cornerRadius(8)
-                }
-                .padding()
-                .background(Color.gray.opacity(0.05))
-                .cornerRadius(8)
-                
-                Spacer()
-            }
-            .padding()
-        }
-    }
-}
