@@ -123,8 +123,8 @@ public struct AdminUsersListView: View {
                             UserListItemView(
                                 user: user,
                                 onSelect: {
+                                    NSLog("👤 DEBUG Usuarios: seleccionado -> %@", user.email)
                                     viewModel.selectUser(user)
-                                    showDetails = true
                                 },
                                 onToggleRole: {
                                     Task {
@@ -146,11 +146,11 @@ public struct AdminUsersListView: View {
                 }
             }
         }
-        .sheet(isPresented: $showDetails) {
-            if let user = viewModel.selectedUser {
-                AdminUserDetailView(viewModel: viewModel, user: user)
-            }
+        .sheet(item: $viewModel.selectedUser) { user in
+            let _ = NSLog("🪟 DEBUG Usuarios: abriendo detalles de usuario -> %@", user.email)
+            AdminUserDetailView(viewModel: viewModel, user: user)
         }
+        .onAppear { NSLog("🧭 DEBUG Vista cargada: AdminUsersListView") }
         .alert("Eliminar Usuario", isPresented: $viewModel.showDeleteConfirmation) {
             Button("Cancelar", role: .cancel) {
                 viewModel.closeDeleteConfirmation()

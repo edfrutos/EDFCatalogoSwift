@@ -1,6 +1,7 @@
 import SwiftUI
 
 public struct AdminCatalogsListView: View {
+    @EnvironmentObject private var authViewModel: AuthViewModel
     @State private var catalogs: [CatalogItem] = []
     @State private var isLoading = false
     @State private var searchText = ""
@@ -34,7 +35,7 @@ public struct AdminCatalogsListView: View {
                     }
                     Spacer()
                     Button(action: {
-                        loadCatalogs()
+                        Task { await loadCatalogs() }
                     }) {
                         Image(systemName: "arrow.clockwise")
                             .foregroundColor(.blue)
@@ -83,6 +84,7 @@ public struct AdminCatalogsListView: View {
                             CatalogAdminItemView(
                                 catalog: catalog,
                                 onSelect: {
+                                    NSLog("📚 DEBUG Catálogos: seleccionado -> %@", catalog.name)
                                     selectedCatalog = catalog
                                     showDetails = true
                                 },
@@ -101,11 +103,10 @@ public struct AdminCatalogsListView: View {
                 }
             }
         }
-        .sheet(isPresented: $showDetails) {
-            if let catalog = selectedCatalog {
-                AdminCatalogDetailView(catalog: catalog)
-            }
+        .sheet(item: $selectedCatalog) { catalog in
+            AdminCatalogContentView(catalogId: catalog.id)
         }
+        .onAppear { NSLog("🧭 DEBUG Vista cargada: AdminCatalogsListView") }
         .alert("Eliminar Catálogo", isPresented: $showDeleteAlert) {
             Button("Cancelar", role: .cancel) { }
             Button("Eliminar", role: .destructive) {
@@ -119,25 +120,33 @@ public struct AdminCatalogsListView: View {
             }
         }
         .task {
-            do {
-                try await Task.sleep(nanoseconds: 100_000_000)
-            } catch { }
-            loadCatalogs()
+            await loadCatalogs()
         }
     }
     
-    private func loadCatalogs() {
+    private func loadCatalogs() async {
         isLoading = true
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            catalogs = [
-                CatalogItem(id: "1", name: "Joyería Moderna", description: "Colección de joyería contemporánea", itemCount: 45),
-                CatalogItem(id: "2", name: "Anillos de Diamante", description: "Anillos con diamantes certificados", itemCount: 23),
-                CatalogItem(id: "3", name: "Colecciones Clásicas", description: "Diseños clásicos y atemporales", itemCount: 67),
-                CatalogItem(id: "4", name: "Pulseras y Brazaletes", description: "Variedad de pulseras y brazaletes", itemCount: 34),
-                CatalogItem(id: "5", name: "Collares y Colgantes", description: "Collares y colgantes personalizados", itemCount: 56)
-            ]
-            isLoading = false
+        defer { isLoading = false }
+        guard let user = authViewModel.currentUser else {
+            NSLog("⚠️ AdminCatalogsListView: no hay usuario autenticado")
+            catalogs = []
+            return
+        }
+        do {
+            let mongo = MongoService.shared
+            let result = try await mongo.getCatalogs(userId: user.id, isAdmin: user.isAdmin)
+            catalogs = result.map { cat in
+                CatalogItem(
+                    id: cat._id.hex,
+                    name: cat.name,
+                    description: cat.description,
+                    itemCount: cat.rows.count
+                )
+            }
+            NSLog("📊 AdminCatalogsListView: cargados %d catálogos", catalogs.count)
+        } catch {
+            NSLog("❌ Error cargando catálogos: %@", String(describing: error))
+            catalogs = []
         }
     }
     
@@ -217,6 +226,155 @@ struct CatalogAdminItemView: View {
         .background(Color.white)
         .border(Color.gray.opacity(0.3), width: 1)
         .cornerRadius(8)
+    }
+}
+
+// MARK: - Admin Catalog Content View (carga completa + filas)
+
+struct AdminCatalogContentView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var authViewModel: AuthViewModel
+    let catalogId: String
+    
+    @State private var isLoading = true
+    @State private var error: String?
+    @State private var catalog: Catalog?
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text(catalog?.name ?? "Catálogo")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                Spacer()
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
+                }
+            }
+            .padding()
+            .background(Color.white)
+            .border(Color.gray.opacity(0.3), width: 1)
+            
+            if isLoading {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Cargando catálogo...").foregroundColor(.gray)
+                }
+                .frame(maxHeight: .infinity)
+            } else if let error {
+                VStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundColor(.orange)
+                    Text(error).foregroundColor(.red)
+                }
+                .padding()
+                .frame(maxHeight: .infinity)
+            } else if let catalog {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        CatalogInfoRowView(label: "Descripción", value: catalog.description)
+                        CatalogInfoRowView(label: "Columnas", value: catalog.columns.joined(separator: ", "))
+                        CatalogInfoRowView(label: "Filas", value: String(catalog.rows.count))
+                        
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Filas")
+                                .font(.headline)
+                            ForEach(Array(catalog.rows.enumerated()), id: \.offset) { idx, row in
+                                RowSummaryView(index: idx + 1, row: row)
+                            }
+                        }
+                    }
+                    .padding()
+                }
+            } else {
+                Text("Catálogo no encontrado").foregroundColor(.gray)
+                    .frame(maxHeight: .infinity)
+            }
+        }
+        .task { await load() }
+    }
+    
+    private func load() async {
+        isLoading = true
+        defer { isLoading = false }
+        guard let user = authViewModel.currentUser else {
+            error = "No hay usuario autenticado"
+            return
+        }
+        do {
+            let mongo = MongoService.shared
+            let list = try await mongo.getCatalogs(userId: user.id, isAdmin: user.isAdmin)
+            if let found = list.first(where: { $0._id.hex == catalogId }) {
+                catalog = found
+            } else {
+                error = "No se encontró el catálogo solicitado"
+            }
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+}
+
+// Resumen simple de fila con enlaces a ficheros
+private struct RowSummaryView: View {
+    let index: Int
+    let row: CatalogRow
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Fila #\(index)").font(.subheadline).fontWeight(.semibold)
+            if !row.data.isEmpty {
+                Text(row.data.map { "\($0.key): \($0.value)" }.joined(separator: "; "))
+                    .font(.caption)
+                    .foregroundColor(.gray)
+            }
+            
+            // Archivos (mostrar urls si existen)
+            VStack(alignment: .leading, spacing: 4) {
+                if let img = row.files.image { FileLinkRow(label: "Imagen", url: img) }
+                if !row.files.images.isEmpty { FileListRow(label: "Imágenes", urls: row.files.images) }
+                if let doc = row.files.document { FileLinkRow(label: "Documento", url: doc) }
+                if !row.files.documents.isEmpty { FileListRow(label: "Documentos", urls: row.files.documents) }
+                if let mm = row.files.multimedia { FileLinkRow(label: "Multimedia", url: mm) }
+                if !row.files.multimediaFiles.isEmpty { FileListRow(label: "Multimedia (varios)", urls: row.files.multimediaFiles) }
+            }
+        }
+        .padding(12)
+        .background(Color.gray.opacity(0.08))
+        .cornerRadius(8)
+    }
+}
+
+private struct FileLinkRow: View {
+    let label: String
+    let url: String
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label).font(.caption).fontWeight(.semibold)
+            Spacer()
+            Button(url) {
+                if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+            }
+            .buttonStyle(.link)
+        }
+    }
+}
+
+private struct FileListRow: View {
+    let label: String
+    let urls: [String]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.caption).fontWeight(.semibold)
+            ForEach(Array(urls.enumerated()), id: \.offset) { idx, u in
+                Button("#\(idx + 1): \(u)") {
+                    if let url = URL(string: u) { NSWorkspace.shared.open(url) }
+                }
+                .buttonStyle(.link)
+            }
+        }
     }
 }
 

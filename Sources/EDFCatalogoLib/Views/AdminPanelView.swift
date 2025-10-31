@@ -61,13 +61,10 @@ public struct AdminPanelView: View {
                 
                 // Tab Navigation
                 Picker("Tab", selection: $selectedTab) {
-                    ForEach(AdminTab.allCases, id: \.self) { tab in
-                        HStack(spacing: 8) {
-                            Image(systemName: tab.icon)
-                            Text(tab.label)
-                        }
-                        .tag(tab)
-                    }
+                    Label("Usuarios", systemImage: "person.3.fill").tag(AdminTab.users)
+                    Label("Catálogos", systemImage: "books.vertical.fill").tag(AdminTab.catalogs)
+                    Label("Estadísticas", systemImage: "chart.bar.fill").tag(AdminTab.statistics)
+                    Label("Configuración", systemImage: "gear").tag(AdminTab.settings)
                 }
                 .pickerStyle(.segmented)
                 .padding()
@@ -78,14 +75,20 @@ public struct AdminPanelView: View {
                     switch selectedTab {
                     case .users:
                         AdminUsersListView(viewModel: viewModel)
+                            .onAppear { NSLog("🧭 DEBUG Tab: render Usuarios") }
                     case .catalogs:
                         AdminCatalogsListView()
+                            .onAppear { NSLog("🧭 DEBUG Tab: render Catálogos") }
                     case .statistics:
                         AdminStatisticsView(currentUser: currentUser)
                     case .settings:
                         AdminSettingsView(currentUser: currentUser)
                     }
                 }
+            }
+            // No forzar pestaña en onAppear; evitar estados inconsistentes de Picker vs contenido
+            .onChange(of: selectedTab) { newValue in
+                NSLog("🧭 DEBUG Tab cambiado -> %@", String(describing: newValue))
             }
         }
     }
