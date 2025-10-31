@@ -113,6 +113,39 @@ Temporary Items
 bin/
 tmp_iconset.iconset/
 
+# Build artifacts
+build.log
+*.bak
+*.backup
+Package.swift.bak
+
+# Test and debug scripts (temporales)
+*_test.sh
+test_*.sh
+test_*.py
+*_debug.sh
+fix_*.sh
+detect_*.sh
+find_*.sh
+verify_*.sh
+analyze_*.swift
+monitor_*.sh
+view_*.sh
+run_swift_with_env.sh
+
+# Session-specific documentation
+RESUMEN_SESION_*.md
+test_results_*.md
+*_OLD.sh
+
+# Temporary Package files
+Package_*.swift
+!Package.swift
+
+# Cleanup script (one-time use)
+cleanup_sensitive_files.sh
+LIMPEZA_PROYECTO.md
+
 # =====================
 # Sensitive / local config
 # =====================
