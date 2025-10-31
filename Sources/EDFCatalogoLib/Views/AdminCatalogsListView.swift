@@ -239,6 +239,7 @@ struct AdminCatalogContentView: View {
     @State private var isLoading = true
     @State private var error: String?
     @State private var catalog: Catalog?
+    @State private var selectedFile: SelectedFile?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -280,7 +281,9 @@ struct AdminCatalogContentView: View {
                             Text("Filas")
                                 .font(.headline)
                             ForEach(Array(catalog.rows.enumerated()), id: \.offset) { idx, row in
-                                RowSummaryView(index: idx + 1, row: row)
+                                RowSummaryView(index: idx + 1, row: row, onFileSelect: { url, fileName in
+                                    selectedFile = SelectedFile(url: url, fileName: fileName)
+                                })
                             }
                         }
                     }
@@ -290,6 +293,9 @@ struct AdminCatalogContentView: View {
                 Text("Catálogo no encontrado").foregroundColor(.gray)
                     .frame(maxHeight: .infinity)
             }
+        }
+        .sheet(item: $selectedFile) { file in
+            FileViewerView(url: file.url, fileName: file.fileName)
         }
         .task { await load() }
     }
@@ -319,6 +325,7 @@ struct AdminCatalogContentView: View {
 private struct RowSummaryView: View {
     let index: Int
     let row: CatalogRow
+    let onFileSelect: (String, String) -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -331,12 +338,12 @@ private struct RowSummaryView: View {
             
             // Archivos (mostrar urls si existen)
             VStack(alignment: .leading, spacing: 4) {
-                if let img = row.files.image { FileLinkRow(label: "Imagen", url: img) }
-                if !row.files.images.isEmpty { FileListRow(label: "Imágenes", urls: row.files.images) }
-                if let doc = row.files.document { FileLinkRow(label: "Documento", url: doc) }
-                if !row.files.documents.isEmpty { FileListRow(label: "Documentos", urls: row.files.documents) }
-                if let mm = row.files.multimedia { FileLinkRow(label: "Multimedia", url: mm) }
-                if !row.files.multimediaFiles.isEmpty { FileListRow(label: "Multimedia (varios)", urls: row.files.multimediaFiles) }
+                if let img = row.files.image { FileLinkRow(label: "Imagen", url: img, onSelect: onFileSelect) }
+                if !row.files.images.isEmpty { FileListRow(label: "Imágenes", urls: row.files.images, onSelect: onFileSelect) }
+                if let doc = row.files.document { FileLinkRow(label: "Documento", url: doc, onSelect: onFileSelect) }
+                if !row.files.documents.isEmpty { FileListRow(label: "Documentos", urls: row.files.documents, onSelect: onFileSelect) }
+                if let mm = row.files.multimedia { FileLinkRow(label: "Multimedia", url: mm, onSelect: onFileSelect) }
+                if !row.files.multimediaFiles.isEmpty { FileListRow(label: "Multimedia (varios)", urls: row.files.multimediaFiles, onSelect: onFileSelect) }
             }
         }
         .padding(12)
@@ -348,13 +355,26 @@ private struct RowSummaryView: View {
 private struct FileLinkRow: View {
     let label: String
     let url: String
+    let onSelect: (String, String) -> Void
+    
+    private var fileName: String {
+        if let urlObj = URL(string: url) {
+            return urlObj.lastPathComponent.isEmpty ? url : urlObj.lastPathComponent
+        }
+        return url
+    }
     
     var body: some View {
         HStack(spacing: 8) {
             Text(label).font(.caption).fontWeight(.semibold)
             Spacer()
-            Button(url) {
-                if let u = URL(string: url) { NSWorkspace.shared.open(u) }
+            Button(action: {
+                onSelect(url, fileName)
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "eye.fill").font(.caption2)
+                    Text(fileName).font(.caption)
+                }
             }
             .buttonStyle(.link)
         }
@@ -364,13 +384,26 @@ private struct FileLinkRow: View {
 private struct FileListRow: View {
     let label: String
     let urls: [String]
+    let onSelect: (String, String) -> Void
+    
+    private func fileName(from url: String) -> String {
+        if let urlObj = URL(string: url) {
+            return urlObj.lastPathComponent.isEmpty ? url : urlObj.lastPathComponent
+        }
+        return url
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.caption).fontWeight(.semibold)
             ForEach(Array(urls.enumerated()), id: \.offset) { idx, u in
-                Button("#\(idx + 1): \(u)") {
-                    if let url = URL(string: u) { NSWorkspace.shared.open(url) }
+                Button(action: {
+                    onSelect(u, fileName(from: u))
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "eye.fill").font(.caption2)
+                        Text("#\(idx + 1): \(fileName(from: u))").font(.caption)
+                    }
                 }
                 .buttonStyle(.link)
             }
