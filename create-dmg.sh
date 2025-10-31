@@ -224,23 +224,88 @@ hdiutil create -volname "${APP_NAME}" \
                "${DMG_TEMP_DIR}/temp.dmg" > /dev/null
 
 # Montar el DMG para agregar el enlace a Aplicaciones
+echo -e "${YELLOW}📂 Montando DMG para agregar enlace a Aplicaciones...${NC}"
 DEVICE=$(hdiutil attach -readwrite -noverify -noautoopen "${DMG_TEMP_DIR}/temp.dmg" 2>/dev/null | egrep '^/dev/' | sed 1q | awk '{print $1}')
 
-# Esperar a que se monte
-sleep 2
+if [ -z "${DEVICE}" ]; then
+    echo -e "${RED}   ❌ Error: No se pudo montar el DMG${NC}"
+    exit 1
+fi
 
-# Obtener el punto de montaje
-VOLUME=$(hdiutil info | grep -i "/Volumes/${APP_NAME}" | tail -1 | awk '{$1=$2=$3=""; print $0}' | sed 's/^ *//')
+# Esperar a que se monte completamente
+sleep 3
+
+# Obtener el punto de montaje - usar múltiples métodos
+VOLUME=$(hdiutil info | grep "${DEVICE}" | grep "/Volumes" | awk '{$1=$2=$3=""; print $0}' | sed 's/^ *//' | head -1)
+
+# Si no se encontró, intentar otro método
+if [ -z "${VOLUME}" ] || [ ! -d "${VOLUME}" ]; then
+    # Buscar por nombre del volumen
+    for vol_path in /Volumes/*; do
+        if [ -d "$vol_path" ] && mountpoint -q "$vol_path" 2>/dev/null; then
+            VOLUME_NAME=$(diskutil info "$vol_path" 2>/dev/null | grep "Volume Name" | awk -F': ' '{print $2}')
+            if [ "$VOLUME_NAME" = "${APP_NAME}" ]; then
+                VOLUME="$vol_path"
+                break
+            fi
+        fi
+    done
+fi
+
+# Si aún no se encontró, usar el último volumen montado
+if [ -z "${VOLUME}" ] || [ ! -d "${VOLUME}" ]; then
+    VOLUME=$(ls -td /Volumes/*/ 2>/dev/null | head -1 | sed 's|/$||')
+fi
+
+if [ -z "${VOLUME}" ] || [ ! -d "${VOLUME}" ]; then
+    echo -e "${RED}   ❌ Error: No se pudo obtener el punto de montaje${NC}"
+    echo -e "${YELLOW}   Intentando listar volúmenes montados...${NC}"
+    ls -la /Volumes/ 2>/dev/null || true
+    hdiutil detach "${DEVICE}" > /dev/null 2>&1 || true
+    exit 1
+fi
+
+echo -e "${GREEN}   ✅ DMG montado en: ${VOLUME}${NC}"
 
 if [ -n "${VOLUME}" ] && [ -d "${VOLUME}" ]; then
     echo -e "${YELLOW}📂 Agregando enlace a carpeta Aplicaciones...${NC}"
     
+    # Eliminar cualquier enlace anterior
+    rm -f "${VOLUME}/Aplicaciones" 2>/dev/null || true
+    
     # Crear enlace simbólico a Aplicaciones en el volumen montado
-    ln -s /Applications "${VOLUME}/Aplicaciones" 2>/dev/null || true
-    if [ -L "${VOLUME}/Aplicaciones" ]; then
-        echo -e "${GREEN}   ✅ Enlace a Aplicaciones creado en el DMG${NC}"
+    if ln -s /Applications "${VOLUME}/Aplicaciones" 2>/dev/null; then
+        echo -e "${GREEN}   ✅ Enlace simbólico creado${NC}"
+        
+        # Intentar crear también un alias de Finder (más visible en Finder)
+        # Los alias de Finder son archivos especiales que el Finder muestra mejor
+        osascript <<EOF > /dev/null 2>&1 || true
+tell application "Finder"
+    try
+        set appsFolder to folder "Applications" of startup disk
+        set volFolder to disk "${APP_NAME}"
+        make alias file to appsFolder at volFolder
+        set name of result to "Aplicaciones"
+        -- Eliminar el enlace simbólico anterior si existe
+        try
+            delete POSIX file ("${VOLUME}/Aplicaciones")
+        end try
+    on error
+        -- Si falla el alias, dejar el enlace simbólico
+    end try
+end tell
+EOF
+        echo -e "${GREEN}   ✅ Intentando crear alias de Finder...${NC}"
     else
-        echo -e "${YELLOW}   ⚠️  No se pudo crear el enlace (continuando de todas formas)${NC}"
+        echo -e "${RED}   ❌ No se pudo crear el enlace a Aplicaciones${NC}"
+    fi
+    
+    # Verificar que existe (enlace o alias)
+    if [ -e "${VOLUME}/Aplicaciones" ]; then
+        echo -e "${GREEN}   ✅ Carpeta Aplicaciones presente y accesible${NC}"
+        ls -l "${VOLUME}/Aplicaciones" 2>/dev/null || true
+    else
+        echo -e "${RED}   ❌ Error: Carpeta Aplicaciones no encontrada${NC}"
     fi
     
     # Limpiar atributos extendidos del volumen montado
@@ -258,14 +323,20 @@ if [ -n "${VOLUME}" ] && [ -d "${VOLUME}" ]; then
     if [ -d "${VOLUME}/${APP_NAME}.app" ]; then
         chmod -R 755 "${VOLUME}/${APP_NAME}.app" 2>/dev/null || true
     fi
-    # Configurar el layout de la ventana del Finder
-    echo -e "${YELLOW}🎨 Configurando layout del DMG...${NC}"
-    
-    # Usar osascript para configurar el layout del Finder
-    osascript <<EOF > /dev/null 2>&1 || true
+    # Verificar que el enlace esté presente antes de configurar el layout
+    if [ -L "${VOLUME}/Aplicaciones" ]; then
+        # Configurar el layout de la ventana del Finder
+        echo -e "${YELLOW}🎨 Configurando layout del DMG...${NC}"
+        
+        # Usar osascript para configurar el layout del Finder
+        # Esperar un momento para que Finder reconozca el enlace
+        sleep 1
+        
+        osascript <<EOF > /dev/null 2>&1 || true
 tell application "Finder"
     tell disk "${APP_NAME}"
         open
+        delay 1
         set current view of container window to icon view
         set toolbar visible of container window to false
         set statusbar visible of container window to false
@@ -273,19 +344,41 @@ tell application "Finder"
         set viewOptions to the icon view options of container window
         set arrangement of viewOptions to not arranged
         set icon size of viewOptions to 72
-        set position of item "${APP_NAME}.app" of container window to {160, 205}
-        set position of item "Aplicaciones" of container window to {360, 205}
-        set position of item "INSTALACION.txt" of container window to {160, 100}
-        set position of item "README.md" of container window to {260, 100}
-        set position of item "MANUAL_DE_USUARIO.md" of container window to {360, 100}
+        try
+            -- Asegurar que todos los items visibles estén posicionados
+            set position of item "${APP_NAME}.app" of container window to {160, 205}
+        on error
+        end try
+        try
+            -- Forzar que el enlace Aplicaciones sea visible
+            set position of item "Aplicaciones" of container window to {360, 205}
+        on error errMsg
+            -- Si falla, intentar con el nombre exacto
+            try
+                set position of item "Aplicaciones" of container window to {360, 205}
+            end try
+        end try
+        try
+            set position of item "INSTALACION.txt" of container window to {160, 100}
+            set position of item "README.md" of container window to {260, 100}
+            set position of item "MANUAL_DE_USUARIO.md" of container window to {360, 100}
+        on error
+        end try
+        -- Actualizar la vista para forzar la actualización
         close
+        delay 0.5
         open
         update without registering applications
-        delay 1
+        delay 1.5
         close
+        delay 0.5
     end tell
 end tell
 EOF
+        echo -e "${GREEN}   ✅ Layout configurado${NC}"
+    else
+        echo -e "${YELLOW}   ⚠️  No se configuró el layout (el enlace no existe)${NC}"
+    fi
     
     # Forzar sincronización
     sync
