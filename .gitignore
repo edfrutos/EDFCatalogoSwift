@@ -111,6 +111,7 @@ Temporary Items
 
 # Project specific
 bin/
+dist/
 tmp_iconset.iconset/
 
 # Build artifacts
