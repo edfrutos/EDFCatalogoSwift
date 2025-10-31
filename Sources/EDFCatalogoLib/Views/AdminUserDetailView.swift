@@ -57,14 +57,7 @@ public struct AdminUserDetailView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     // User Avatar
-                    Circle()
-                        .fill(Color.blue.opacity(0.2))
-                        .frame(width: 60, height: 60)
-                        .overlay {
-                            Text(String(user.name.prefix(1)))
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.blue)
-                        }
+                    ProfileAvatarView(profileImageUrl: user.profileImageUrl, name: user.name, size: 60)
                     
                     // Tabs
                     Picker("Tab", selection: $isEditing) {
@@ -279,6 +272,68 @@ public struct AdminUserDetailView: View {
         Task {
             await viewModel.updateUser(editedUser)
             dismiss()
+        }
+    }
+}
+
+// MARK: - Profile Avatar View
+
+struct ProfileAvatarView: View {
+    let profileImageUrl: String?
+    let name: String
+    let size: CGFloat
+    
+    @State private var loadedImage: NSImage?
+    @State private var isLoading = false
+    
+    var body: some View {
+        Group {
+            if let image = loadedImage {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size, height: size)
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(Color.blue.opacity(0.3), lineWidth: 2))
+            } else {
+                Circle()
+                    .fill(Color.blue.opacity(0.2))
+                    .frame(width: size, height: size)
+                    .overlay {
+                        if isLoading {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                        } else {
+                            Text(String(name.prefix(1)))
+                                .font(.system(size: size * 0.4, weight: .bold))
+                                .foregroundColor(.blue)
+                        }
+                    }
+            }
+        }
+        .task {
+            await loadProfileImage()
+        }
+    }
+    
+    private func loadProfileImage() async {
+        guard let imageUrlString = profileImageUrl,
+              let imageUrl = URL(string: imageUrlString) else {
+            return
+        }
+        
+        isLoading = true
+        defer { isLoading = false }
+        
+        do {
+            let (data, _) = try await URLSession.shared.data(from: imageUrl)
+            if let image = NSImage(data: data) {
+                await MainActor.run {
+                    self.loadedImage = image
+                }
+            }
+        } catch {
+            print("⚠️ Error cargando imagen de perfil: \(error.localizedDescription)")
         }
     }
 }
