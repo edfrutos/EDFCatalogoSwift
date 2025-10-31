@@ -17,6 +17,17 @@ public class CatalogDetailViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var isEditing: Bool = false
     @Published var showingAddRowSheet: Bool = false
+    
+    // Ordenamiento
+    @Published var sortedColumn: String? = nil
+    @Published var sortDirection: SortDirection = .none
+    private var originalRows: [CatalogRow] = []
+    
+    enum SortDirection {
+        case none
+        case ascending
+        case descending
+    }
 
     private let mongoService = MongoService.shared
     private let catalogId: BSONObjectID
@@ -42,7 +53,8 @@ public class CatalogDetailViewModel: ObservableObject {
                    let updatedCatalog = try? parseCatalogFromDocument(doc) {
                     await MainActor.run {
                         self.catalog = updatedCatalog
-                        self.rows = updatedCatalog.rows
+                        self.originalRows = updatedCatalog.rows
+                        self.applySorting()
                         self.isLoading = false
                     }
                 } else {
@@ -158,11 +170,11 @@ public class CatalogDetailViewModel: ObservableObject {
         errorMessage = nil
 
         // 1) Cargamos lo que venga en el catálogo
-        rows = catalog.rows
+        var loadedRows = catalog.rows
 
         // 2) Si no hay filas pero sí legacyRows, las convertimos
-        if rows.isEmpty, let legacyRows = catalog.legacyRows {
-            rows = legacyRows.map { legacyRow in
+        if loadedRows.isEmpty, let legacyRows = catalog.legacyRows {
+            loadedRows = legacyRows.map { legacyRow in
                 CatalogRow(
                     _id: BSONObjectID(),
                     data: legacyRow,
@@ -174,11 +186,58 @@ public class CatalogDetailViewModel: ObservableObject {
         }
 
         // 3) Fallback: datos de ejemplo si sigue vacío
-        if rows.isEmpty {
+        if loadedRows.isEmpty {
             loadSampleRows()
+            originalRows = rows
+        } else {
+            originalRows = loadedRows
+            applySorting()
         }
 
         isLoading = false
+    }
+    
+    /// Aplica el ordenamiento actual a las filas
+    private func applySorting() {
+        guard let column = sortedColumn, sortDirection != .none else {
+            rows = originalRows
+            return
+        }
+        
+        rows = originalRows.sorted { row1, row2 in
+            let value1 = row1.data[column] ?? ""
+            let value2 = row2.data[column] ?? ""
+            
+            // Intentar ordenar numéricamente si ambos valores son números
+            if let num1 = Double(value1), let num2 = Double(value2) {
+                return sortDirection == .ascending ? num1 < num2 : num1 > num2
+            }
+            
+            // Ordenamiento alfabético
+            let comparison = value1.localizedCompare(value2)
+            return sortDirection == .ascending ? comparison == .orderedAscending : comparison == .orderedDescending
+        }
+    }
+    
+    /// Cambia el ordenamiento por columna
+    func toggleSort(column: String) {
+        if sortedColumn == column {
+            // Cambiar dirección
+            switch sortDirection {
+            case .none:
+                sortDirection = .ascending
+            case .ascending:
+                sortDirection = .descending
+            case .descending:
+                sortDirection = .none
+                sortedColumn = nil
+            }
+        } else {
+            // Nueva columna, empezar con ascendente
+            sortedColumn = column
+            sortDirection = .ascending
+        }
+        applySorting()
     }
 
     private func loadSampleRows() {
@@ -230,38 +289,59 @@ public class CatalogDetailViewModel: ObservableObject {
             updatedAt: now
         )
 
-        rows.append(newRow)
+        originalRows.append(newRow)
+        applySorting()
         persistCatalogChanges()
     }
 
     public func updateRow(at index: Int, data: [String: String], files: RowFiles) {
         guard index >= 0 && index < rows.count else { return }
 
+        // Obtener la fila original desde rows (ya ordenada)
         var updatedRow = rows[index]
         updatedRow.data = data
         updatedRow.files = files
         updatedRow.updatedAt = Date()
-        // Preservar el originalId
-        // (ya está en updatedRow, no hace falta reasignarlo)
-
-        rows[index] = updatedRow
+        
+        // Actualizar en originalRows usando el originalId para encontrar la fila correcta
+        if let originalIndex = originalRows.firstIndex(where: { $0.originalId == updatedRow.originalId }) {
+            originalRows[originalIndex] = updatedRow
+        }
+        
+        applySorting()
         persistCatalogChanges()
     }
 
     public func deleteRow(at index: Int) {
         guard index >= 0 && index < rows.count else { return }
-        rows.remove(at: index)
+        
+        // Obtener la fila a eliminar desde rows (ya ordenada)
+        let rowToDelete = rows[index]
+        
+        // Eliminar de originalRows usando el originalId
+        if let originalIndex = originalRows.firstIndex(where: { $0.originalId == rowToDelete.originalId }) {
+            originalRows.remove(at: originalIndex)
+        }
+        
+        applySorting()
         persistCatalogChanges()
     }
     
     public func moveRow(from source: IndexSet, to destination: Int) {
-        rows.move(fromOffsets: source, toOffset: destination)
+        // Si hay ordenamiento activo, desactivarlo al mover (el usuario está ordenando manualmente)
+        if sortedColumn != nil {
+            sortedColumn = nil
+            sortDirection = .none
+        }
+        originalRows.move(fromOffsets: source, toOffset: destination)
+        rows = originalRows
         persistCatalogChanges()
     }
 
     public func persistCatalogChanges() {
         var updatedCatalog = catalog
-        updatedCatalog.rows = rows
+        // Guardar las filas originales (sin ordenamiento) en el catálogo
+        updatedCatalog.rows = originalRows
         updatedCatalog.updatedAt = Date()
         catalog = updatedCatalog
 
@@ -322,16 +402,18 @@ public struct CatalogDetailView: View {
                 .foregroundColor(.secondary)
                 .padding(.horizontal)
 
-            // Cabecera columnas
+            // Cabecera columnas (interactivas con ordenamiento)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack {
+                HStack(spacing: 8) {
                     ForEach(viewModel.catalog.columns, id: \.self) { column in
-                        Text(column)
-                            .font(.headline)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 12)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(8)
+                        SortableColumnHeader(
+                            title: column,
+                            isSorted: viewModel.sortedColumn == column,
+                            sortDirection: viewModel.sortedColumn == column ? viewModel.sortDirection : .none,
+                            onTap: {
+                                viewModel.toggleSort(column: column)
+                            }
+                        )
                     }
 
                     Text("Archivos")
@@ -2553,6 +2635,44 @@ struct YouTubeWebView: NSViewRepresentable {
         return nil
     }
 }
+
+   // MARK: - Cabecera de columna ordenable
+   struct SortableColumnHeader: View {
+       let title: String
+       let isSorted: Bool
+       let sortDirection: CatalogDetailViewModel.SortDirection
+       let onTap: () -> Void
+       
+       var body: some View {
+           Button(action: onTap) {
+               HStack(spacing: 6) {
+                   Text(title)
+                       .font(.headline)
+                       .foregroundColor(isSorted ? .blue : .primary)
+                   
+                   if isSorted {
+                       Image(systemName: sortDirection == .ascending ? "arrow.up" : "arrow.down")
+                           .font(.caption)
+                           .foregroundColor(.blue)
+                   } else {
+                       Image(systemName: "arrow.up.arrow.down")
+                           .font(.caption2)
+                           .foregroundColor(.gray.opacity(0.5))
+                   }
+               }
+               .padding(.vertical, 8)
+               .padding(.horizontal, 12)
+               .background(isSorted ? Color.blue.opacity(0.15) : Color.blue.opacity(0.1))
+               .cornerRadius(8)
+               .overlay(
+                   RoundedRectangle(cornerRadius: 8)
+                       .stroke(isSorted ? Color.blue.opacity(0.5) : Color.clear, lineWidth: 1)
+               )
+           }
+           .buttonStyle(.plain)
+           .help("Clic para ordenar por \(title)")
+       }
+   }
 
    // MARK: - Previsualizador de texto en modal
    struct TextPreviewView: View {
